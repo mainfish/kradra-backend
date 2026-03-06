@@ -4,16 +4,15 @@ use serde_json::json;
 use crate::{error::AppError, state::AppState};
 
 pub async fn root() -> &'static str {
-    "backend is alive"
+    "kradra"
 }
 
 pub async fn health() -> &'static str {
-    "ok"
+    "alive"
 }
 
 pub async fn ping() -> Json<serde_json::Value> {
-    Json(json!({
-        "ok": true,
+    Json(serde_json::json!({
         "service": "kradra-api",
         "version": env!("CARGO_PKG_VERSION")
     }))

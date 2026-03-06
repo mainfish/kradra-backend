@@ -6,6 +6,7 @@ use std::fmt;
 pub enum AppError {
     Unauthorized,
     NotFound,
+    Conflict(String),
     BadRequest(String),
     ServiceUnavailable(String),
     Internal,
@@ -16,6 +17,7 @@ impl fmt::Display for AppError {
         match self {
             AppError::Unauthorized => write!(f, "unauthorized"),
             AppError::NotFound => write!(f, "not found"),
+            AppError::Conflict(message) => write!(f, "{message}"),
             AppError::BadRequest(message) => write!(f, "bad request: {message}"),
             AppError::ServiceUnavailable(message) => write!(f, "service unavailable: {message}"),
             AppError::Internal => write!(f, "internal error"),
@@ -30,6 +32,7 @@ impl IntoResponse for AppError {
         let (status, code) = match &self {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+            AppError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             AppError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")

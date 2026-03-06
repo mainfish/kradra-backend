@@ -3,6 +3,7 @@
 use sqlx::postgres::PgPoolOptions;
 use std::{env, error::Error, net::SocketAddr};
 
+mod crypto;
 mod error;
 mod http;
 mod modules;
