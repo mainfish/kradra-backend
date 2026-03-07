@@ -1,5 +1,4 @@
 use axum::{Json, extract::State};
-use serde_json::json;
 
 use crate::{error::AppError, state::AppState};
 

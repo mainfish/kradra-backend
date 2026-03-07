@@ -17,9 +17,9 @@ impl fmt::Display for AppError {
         match self {
             AppError::Unauthorized => write!(f, "unauthorized"),
             AppError::NotFound => write!(f, "not found"),
+            AppError::BadRequest(message) => write!(f, "{message}"),
             AppError::Conflict(message) => write!(f, "{message}"),
-            AppError::BadRequest(message) => write!(f, "bad request: {message}"),
-            AppError::ServiceUnavailable(message) => write!(f, "service unavailable: {message}"),
+            AppError::ServiceUnavailable(message) => write!(f, "{message}"),
             AppError::Internal => write!(f, "internal error"),
         }
     }
@@ -41,7 +41,6 @@ impl IntoResponse for AppError {
         };
 
         let body = Json(json!({
-            "ok": false,
             "error": { "code": code, "message": self.to_string() }
         }));
 

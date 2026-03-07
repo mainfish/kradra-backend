@@ -1,26 +1,14 @@
 use crate::{crypto::passwords, error::AppError, state::AppState};
 use axum::{Json, extract::State};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::Row;
 
-#[derive(Debug, Deserialize)]
-pub struct RegisterRequest {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RegisterResponse {
-    pub id: String,
-    pub username: String,
-    pub role: String,
-}
+use super::dto::{LoginRequest, LoginResponse, RegisterRequest, RegisterResponse, RegisterUser};
 
 pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<RegisterResponse>, AppError> {
     let username = req.username.trim().to_string();
 
     if username.is_empty() {
@@ -60,7 +48,7 @@ pub async fn register(
         }
     };
 
-    let user = RegisterResponse {
+    let user = RegisterUser {
         id: row
             .try_get::<String, _>("id")
             .map_err(|_| AppError::Internal)?,
@@ -72,14 +60,85 @@ pub async fn register(
             .map_err(|_| AppError::Internal)?,
     };
 
-    Ok(Json(json!({ "user": user })))
+    Ok(Json(RegisterResponse { user }))
 }
 
-pub async fn login() -> Json<serde_json::Value> {
-    Json(json!({
-        "stub": true,
-        "message": "auth/login is not implemented yet"
-    }))
+pub async fn login(
+    State(state): State<AppState>,
+    Json(req): Json<LoginRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let username = req.username.trim().to_string();
+    if username.is_empty() {
+        return Err(AppError::BadRequest("username is required".to_string()));
+    }
+
+    let row = sqlx::query(
+        r#"
+        SELECT id::text as id, username, password_hash, role, is_active
+        FROM users
+        WHERE username = $1
+        "#,
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    let Some(row) = row else {
+        return Err(AppError::Unauthorized);
+    };
+
+    let is_active: bool = row.try_get("is_active").map_err(|_| AppError::Internal)?;
+    if !is_active {
+        return Err(AppError::Unauthorized);
+    }
+
+    let user_id: String = row.try_get("id").map_err(|_| AppError::Internal)?;
+    let role: String = row.try_get("role").map_err(|_| AppError::Internal)?;
+    let password_hash: String = row
+        .try_get("password_hash")
+        .map_err(|_| AppError::Internal)?;
+
+    let ok = passwords::verify_password(&req.password, &password_hash)
+        .map_err(|_| AppError::Internal)?;
+    if !ok {
+        return Err(AppError::Unauthorized);
+    }
+
+    // access jwt
+    let access_token = crate::crypto::tokens::make_access_token(
+        &user_id,
+        &username,
+        &role,
+        &state.auth.jwt_secret,
+        state.auth.access_ttl_seconds,
+    )
+    .map_err(|_| AppError::Internal)?;
+
+    // refresh token (plain to client, hash to DB)
+    let (refresh_token, refresh_hash) = crate::crypto::tokens::make_refresh_token();
+    let expires_unix =
+        crate::crypto::tokens::unix_now() + state.auth.refresh_ttl_days * 24 * 60 * 60;
+
+    sqlx::query(
+        r#"
+        INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+        VALUES (($1)::uuid, $2, to_timestamp($3))
+        "#,
+    )
+    .bind(&user_id)
+    .bind(&refresh_hash)
+    .bind(expires_unix)
+    .execute(&state.db)
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    Ok(Json(json!({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "Bearer",
+        "expires_in": state.auth.access_ttl_seconds
+    })))
 }
 
 pub async fn refresh() -> Json<serde_json::Value> {
