@@ -32,10 +32,13 @@ fn cors_layer_from_env() -> CorsLayer {
 
     let mut layer = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            header::HeaderName::from_static("x-csrf-token"),
+        ])
         .expose_headers([header::SET_COOKIE]);
 
-    // If no origins configured, effectively disable CORS.
     layer = if origins.is_empty() {
         layer.allow_origin(AllowOrigin::exact(HeaderValue::from_static("null")))
     } else {

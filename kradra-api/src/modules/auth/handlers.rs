@@ -11,6 +11,8 @@ use super::dto::{
 use crate::{error::AppError, state::AppState};
 
 const REFRESH_COOKIE_NAME: &str = "refresh_token";
+const CSRF_COOKIE_NAME: &str = "csrf_token";
+const CSRF_HEADER_NAME: &str = "x-csrf-token";
 
 fn get_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     let raw = headers.get(header::COOKIE)?.to_str().ok()?;
@@ -23,6 +25,22 @@ fn get_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn get_header(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
+fn generate_csrf_token() -> String {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    use rand_core::{OsRng, RngCore};
+
+    let mut bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
 }
 
 fn build_refresh_set_cookie(state: &AppState, value: &str, max_age_seconds: i64) -> String {
@@ -57,26 +75,77 @@ fn build_refresh_set_cookie(state: &AppState, value: &str, max_age_seconds: i64)
     s
 }
 
-fn set_cookie_headers(state: &AppState, refresh_plain: &str) -> Result<HeaderMap, AppError> {
+// CSRF cookie: NOT HttpOnly (frontend must read it)
+fn build_csrf_set_cookie(state: &AppState, value: &str, max_age_seconds: i64) -> String {
+    let mut s = format!(
+        "{name}={value}; Path=/; Max-Age={max_age}",
+        name = CSRF_COOKIE_NAME,
+        value = value,
+        max_age = max_age_seconds.max(0)
+    );
+
+    let ss = state.crypto_adapters.auth_config.cookie_samesite.trim();
+    if !ss.is_empty() {
+        s.push_str("; SameSite=");
+        s.push_str(ss);
+    }
+
+    if let Some(domain) = &state.crypto_adapters.auth_config.cookie_domain {
+        let d = domain.trim();
+        if !d.is_empty() {
+            s.push_str("; Domain=");
+            s.push_str(d);
+        }
+    }
+
+    if state.crypto_adapters.auth_config.cookie_secure {
+        s.push_str("; Secure");
+    }
+
+    s
+}
+
+fn set_cookie_headers(
+    state: &AppState,
+    refresh_plain: &str,
+    csrf_token: &str,
+) -> Result<HeaderMap, AppError> {
     let mut headers = HeaderMap::new();
     let max_age = state.crypto_adapters.auth_config.refresh_ttl_days * 24 * 60 * 60;
-    let cookie = build_refresh_set_cookie(state, refresh_plain, max_age);
+
+    let refresh_cookie = build_refresh_set_cookie(state, refresh_plain, max_age);
+    let csrf_cookie = build_csrf_set_cookie(state, csrf_token, max_age);
 
     headers.insert(
         header::SET_COOKIE,
-        HeaderValue::from_str(&cookie).map_err(|_| AppError::Internal)?,
+        HeaderValue::from_str(&refresh_cookie).map_err(|_| AppError::Internal)?,
     );
+
+    // second Set-Cookie header
+    headers.append(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&csrf_cookie).map_err(|_| AppError::Internal)?,
+    );
+
     Ok(headers)
 }
 
 fn clear_cookie_headers(state: &AppState) -> Result<HeaderMap, AppError> {
     let mut headers = HeaderMap::new();
-    let cookie = build_refresh_set_cookie(state, "", 0);
+
+    let refresh_cookie = build_refresh_set_cookie(state, "", 0);
+    let csrf_cookie = build_csrf_set_cookie(state, "", 0);
 
     headers.insert(
         header::SET_COOKIE,
-        HeaderValue::from_str(&cookie).map_err(|_| AppError::Internal)?,
+        HeaderValue::from_str(&refresh_cookie).map_err(|_| AppError::Internal)?,
     );
+
+    headers.append(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&csrf_cookie).map_err(|_| AppError::Internal)?,
+    );
+
     Ok(headers)
 }
 
@@ -137,13 +206,14 @@ pub async fn login(
     .await
     .map_err(AppError::from)?;
 
-    // always set cookie (web); CLI can ignore
-    let set_headers = set_cookie_headers(&state, &out.refresh_token)?;
+    let csrf = generate_csrf_token();
+    let set_headers = set_cookie_headers(&state, &out.refresh_token, &csrf)?;
 
     Ok((
         set_headers,
         Json(LoginResponse {
             access_token: out.access_token,
+            // web => None, cli/mobile => Some(...)
             refresh_token: if is_web {
                 None
             } else {
@@ -161,6 +231,15 @@ pub async fn refresh(
     Json(req): Json<RefreshRequest>,
 ) -> Result<(HeaderMap, Json<RefreshResponse>), AppError> {
     let is_web = headers.get(header::ORIGIN).is_some();
+
+    // CSRF check for web
+    if is_web {
+        let csrf_cookie = get_cookie(&headers, CSRF_COOKIE_NAME).ok_or(AppError::Forbidden)?;
+        let csrf_header = get_header(&headers, CSRF_HEADER_NAME).ok_or(AppError::Forbidden)?;
+        if csrf_cookie != csrf_header {
+            return Err(AppError::Forbidden);
+        }
+    }
 
     let refresh_token = req
         .refresh_token
@@ -182,8 +261,8 @@ pub async fn refresh(
     .await
     .map_err(AppError::from)?;
 
-    // rotate cookie
-    let set_headers = set_cookie_headers(&state, &out.refresh_token)?;
+    let csrf = generate_csrf_token();
+    let set_headers = set_cookie_headers(&state, &out.refresh_token, &csrf)?;
 
     Ok((
         set_headers,
@@ -205,6 +284,17 @@ pub async fn logout(
     headers: HeaderMap,
     Json(req): Json<LogoutRequest>,
 ) -> Result<(HeaderMap, Json<LogoutResponse>), AppError> {
+    let is_web = headers.get(header::ORIGIN).is_some();
+
+    // CSRF check for web
+    if is_web {
+        let csrf_cookie = get_cookie(&headers, CSRF_COOKIE_NAME).ok_or(AppError::Forbidden)?;
+        let csrf_header = get_header(&headers, CSRF_HEADER_NAME).ok_or(AppError::Forbidden)?;
+        if csrf_cookie != csrf_header {
+            return Err(AppError::Forbidden);
+        }
+    }
+
     let refresh_token = req
         .refresh_token
         .or_else(|| get_cookie(&headers, REFRESH_COOKIE_NAME))
