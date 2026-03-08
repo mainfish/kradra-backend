@@ -21,11 +21,14 @@ pub async fn register(
     password: &str,
 ) -> Result<CreatedUserRecord, AuthError> {
     let username = username.trim();
+
     if username.is_empty() {
-        return Err(AuthError::InvalidCredentials);
+        return Err(AuthError::BadRequest("username is required".to_string()));
     }
     if password.len() < 8 {
-        return Err(AuthError::InvalidCredentials);
+        return Err(AuthError::BadRequest(
+            "password must be at least 8 characters".to_string(),
+        ));
     }
 
     let password_hash = password_hasher.hash(password)?;
