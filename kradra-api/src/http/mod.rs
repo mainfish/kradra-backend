@@ -1,5 +1,5 @@
+pub mod cookies;
 pub mod extractors;
-
-mod router;
+pub mod router;
 
 pub use router::build_router;
