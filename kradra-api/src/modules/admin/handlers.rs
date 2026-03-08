@@ -1,9 +1,11 @@
 use axum::Json;
-use serde_json::json;
 
-pub async fn ping() -> Json<serde_json::Value> {
-    Json(json!({
-        "stub": true,
-        "message": "admin/ping is not implemented yet"
-    }))
+use kradra_core::auth::types::AuthUser;
+
+use crate::http::extractors::auth_user::require_admin;
+
+pub async fn ping(user: AuthUser) -> Result<Json<serde_json::Value>, crate::error::AppError> {
+    require_admin(&user)?;
+
+    Ok(Json(serde_json::json!({ "message": "admin pong" })))
 }

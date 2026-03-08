@@ -19,7 +19,7 @@ pub async fn ping() -> Json<serde_json::Value> {
 
 pub async fn readiness(State(state): State<AppState>) -> Result<&'static str, AppError> {
     sqlx::query("SELECT 1")
-        .execute(&state.db)
+        .execute(&state.db_adapters.db)
         .await
         .map_err(|e| AppError::ServiceUnavailable(format!("db unavailable: {e}")))?;
 
