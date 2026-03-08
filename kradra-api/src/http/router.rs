@@ -2,13 +2,23 @@ use axum::Router;
 use axum::http::{HeaderValue, Method, header};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
+use axum::Extension;
+use axum::middleware;
+
+use crate::http::middleware::rate_limit::{RateLimitConfig, RateLimiter};
 use crate::{error::AppError, modules, state::AppState};
 
 pub fn build_router(state: AppState) -> Router {
+    let rate_limiter = std::sync::Arc::new(RateLimiter::new(RateLimitConfig::from_env()));
+
     Router::new()
         .merge(modules::router())
         .with_state(state)
         .fallback(fallback_404)
+        .layer(middleware::from_fn(
+            crate::http::middleware::rate_limit::auth_rate_limit,
+        ))
+        .layer(Extension(rate_limiter))
         .layer(cors_layer_from_env())
 }
 

@@ -15,6 +15,7 @@ pub enum AppError {
     BadRequest(String),
     ServiceUnavailable(String),
     Internal,
+    TooManyRequests { retry_after_seconds: u64 },
 }
 
 impl AppError {
@@ -37,6 +38,12 @@ impl AppError {
     pub fn forbidden() -> Self {
         AppError::Forbidden
     }
+
+    pub fn too_many_requests(retry_after_seconds: u64) -> Self {
+        AppError::TooManyRequests {
+            retry_after_seconds,
+        }
+    }
 }
 
 impl fmt::Display for AppError {
@@ -49,6 +56,7 @@ impl fmt::Display for AppError {
             AppError::BadRequest(message) => write!(f, "{message}"),
             AppError::ServiceUnavailable(message) => write!(f, "{message}"),
             AppError::Internal => write!(f, "internal error"),
+            AppError::TooManyRequests { .. } => write!(f, "too many requests"),
         }
     }
 }
@@ -82,6 +90,9 @@ impl IntoResponse for AppError {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
             }
             AppError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
+            AppError::TooManyRequests { .. } => {
+                (StatusCode::TOO_MANY_REQUESTS, "too_many_requests")
+            }
         };
 
         let body = Json(json!({

@@ -1,6 +1,7 @@
 use axum::http::{HeaderMap, header};
 
 use crate::error::AppError;
+use crate::state::AppState;
 
 use super::refresh::{CookieConfig, get_cookie, get_header, push_set_cookie};
 
@@ -77,4 +78,15 @@ pub fn enforce_csrf_if_web(headers: &HeaderMap) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+/// Issue (set/rotate) csrf_token cookie and return response headers.
+pub fn issue_csrf_cookie(state: &AppState) -> Result<HeaderMap, AppError> {
+    let cookie_config = CookieConfig::from_state(state);
+    let csrf_token = generate_csrf_token();
+
+    let mut response_headers = HeaderMap::new();
+    set_csrf_cookie(&mut response_headers, &cookie_config, &csrf_token)?;
+
+    Ok(response_headers)
 }

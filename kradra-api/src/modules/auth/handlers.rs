@@ -148,3 +148,10 @@ pub async fn logout(
 
     Ok((response_headers, Json(LogoutResponse {})))
 }
+
+pub async fn csrf(
+    State(state): State<AppState>,
+) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
+    let response_headers = cookies::csrf::issue_csrf_cookie(&state)?;
+    Ok((response_headers, Json(serde_json::json!({}))))
+}

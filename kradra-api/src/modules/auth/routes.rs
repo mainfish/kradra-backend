@@ -1,4 +1,7 @@
-use axum::{Router, routing::post};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 
 use crate::state::AppState;
 
@@ -6,6 +9,7 @@ use super::handlers;
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/api/auth/csrf", get(handlers::csrf))
         .route("/api/auth/register", post(handlers::register))
         .route("/api/auth/login", post(handlers::login))
         .route("/api/auth/refresh", post(handlers::refresh))
