@@ -14,6 +14,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub fn new(db: PgPool) -> Self {
+        Self {
+            db_adapters: DbAdapters::new(db),
+            crypto_adapters: CryptoAdapters::default(),
+        }
+    }
+
     pub async fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Load .env if present
         dotenvy::dotenv().ok();
@@ -26,13 +33,6 @@ impl AppState {
 
         Ok(Self::new(db))
     }
-
-    fn new(db: PgPool) -> Self {
-        Self {
-            db_adapters: DbAdapters::new(db),
-            crypto_adapters: CryptoAdapters::default(),
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -43,7 +43,7 @@ pub struct DbAdapters {
 }
 
 impl DbAdapters {
-    fn new(db: PgPool) -> Self {
+    pub fn new(db: PgPool) -> Self {
         let user_repo = PgUserRepo::new(db.clone());
         let refresh_token_store = PgRefreshTokenStore::new(db.clone());
 
@@ -60,6 +60,11 @@ pub struct AuthConfig {
     pub jwt_secret: String,
     pub access_ttl_seconds: i64,
     pub refresh_ttl_days: i64,
+
+    // cookie settings
+    pub cookie_secure: bool,
+    pub cookie_samesite: String,
+    pub cookie_domain: Option<String>,
 }
 
 impl Default for AuthConfig {
@@ -77,10 +82,24 @@ impl Default for AuthConfig {
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(30);
 
+        let cookie_secure = env::var("COOKIE_SECURE")
+            .ok()
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+
+        let cookie_samesite = env::var("COOKIE_SAMESITE").unwrap_or_else(|_| "Lax".to_string());
+
+        let cookie_domain = env::var("COOKIE_DOMAIN")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
         Self {
             jwt_secret,
             access_ttl_seconds,
             refresh_ttl_days,
+            cookie_secure,
+            cookie_samesite,
+            cookie_domain,
         }
     }
 }

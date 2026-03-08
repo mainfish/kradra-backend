@@ -1,30 +1,30 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct RegisterRequest {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct RegisterUser {
     pub id: String,
     pub username: String,
     pub role: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct RegisterResponse {
     pub user: RegisterUser,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
@@ -32,12 +32,13 @@ pub struct LoginResponse {
     pub expires_in: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct RefreshRequest {
-    pub refresh_token: String,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct RefreshResponse {
     pub access_token: String,
     pub refresh_token: String,
@@ -45,10 +46,11 @@ pub struct RefreshResponse {
     pub expires_in: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct LogoutRequest {
-    pub refresh_token: String,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct LogoutResponse {}
