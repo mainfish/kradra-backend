@@ -115,8 +115,11 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Result<(HeaderMap, Json<LoginResponse>), AppError> {
+    let is_web = headers.get(header::ORIGIN).is_some();
+
     let ttl = state.crypto_adapters.auth_config.access_ttl_seconds;
     let refresh_days = state.crypto_adapters.auth_config.refresh_ttl_days;
 
@@ -135,13 +138,17 @@ pub async fn login(
     .map_err(AppError::from)?;
 
     // always set cookie (web); CLI can ignore
-    let headers = set_cookie_headers(&state, &out.refresh_token)?;
+    let set_headers = set_cookie_headers(&state, &out.refresh_token)?;
 
     Ok((
-        headers,
+        set_headers,
         Json(LoginResponse {
             access_token: out.access_token,
-            refresh_token: out.refresh_token,
+            refresh_token: if is_web {
+                None
+            } else {
+                Some(out.refresh_token)
+            },
             token_type: out.token_type,
             expires_in: out.expires_in,
         }),
@@ -153,6 +160,8 @@ pub async fn refresh(
     headers: HeaderMap,
     Json(req): Json<RefreshRequest>,
 ) -> Result<(HeaderMap, Json<RefreshResponse>), AppError> {
+    let is_web = headers.get(header::ORIGIN).is_some();
+
     let refresh_token = req
         .refresh_token
         .or_else(|| get_cookie(&headers, REFRESH_COOKIE_NAME))
@@ -180,7 +189,11 @@ pub async fn refresh(
         set_headers,
         Json(RefreshResponse {
             access_token: out.access_token,
-            refresh_token: out.refresh_token,
+            refresh_token: if is_web {
+                None
+            } else {
+                Some(out.refresh_token)
+            },
             token_type: out.token_type,
             expires_in: out.expires_in,
         }),

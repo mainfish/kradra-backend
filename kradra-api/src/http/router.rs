@@ -8,8 +8,8 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .merge(modules::router())
         .with_state(state)
-        .layer(cors_layer_from_env())
         .fallback(fallback_404)
+        .layer(cors_layer_from_env())
 }
 
 async fn fallback_404() -> AppError {

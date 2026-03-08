@@ -27,7 +27,8 @@ pub struct LoginRequest {
 #[derive(Serialize, Debug, Clone)]
 pub struct LoginResponse {
     pub access_token: String,
-    pub refresh_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     pub token_type: String,
     pub expires_in: i64,
 }
@@ -41,7 +42,8 @@ pub struct RefreshRequest {
 #[derive(Serialize, Debug, Clone)]
 pub struct RefreshResponse {
     pub access_token: String,
-    pub refresh_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     pub token_type: String,
     pub expires_in: i64,
 }
