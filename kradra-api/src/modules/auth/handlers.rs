@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::State,
+    extract::{Extension, State},
     http::{HeaderMap, Method},
 };
 
@@ -8,6 +8,8 @@ use super::dto::{
     LoginRequest, LoginResponse, LogoutRequest, LogoutResponse, RefreshRequest, RefreshResponse,
     RegisterRequest, RegisterResponse, RegisterUser,
 };
+
+use kradra_core::auth::errors::AuthError;
 
 use crate::infra::telemetry::audit;
 use crate::{error::AppError, http::cookies, state::AppState};
@@ -64,11 +66,19 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
+    Extension(login_slowdown): Extension<
+        std::sync::Arc<crate::infra::security::slowdown::LoginSlowdown>,
+    >,
     headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Result<(HeaderMap, Json<LoginResponse>), AppError> {
     let meta = audit::RequestMeta::from_headers(Method::POST, "/api/auth/login", &headers);
     let is_web = cookies::csrf::is_web_request(&headers);
+
+    let ip = meta.ip.clone();
+    let username_key = req.username.clone();
+
+    login_slowdown.maybe_delay(&ip, &username_key).await;
 
     let access_ttl_seconds = state.crypto_adapters.auth_config.access_ttl_seconds;
     let refresh_ttl_days = state.crypto_adapters.auth_config.refresh_ttl_days;
@@ -88,9 +98,14 @@ pub async fn login(
     {
         Ok(value) => {
             audit::auth_login_success(&meta, &req.username);
+            login_slowdown.reset(&ip, &username_key).await;
             value
         }
         Err(err) => {
+            if matches!(err, AuthError::InvalidCredentials) {
+                login_slowdown.record_failure(&ip, &username_key).await;
+            }
+
             let reason = audit::auth_error_reason(&err);
             audit::auth_login_fail(&meta, &req.username, reason);
 

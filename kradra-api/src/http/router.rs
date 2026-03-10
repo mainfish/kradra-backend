@@ -7,10 +7,12 @@ use axum::middleware;
 
 use crate::http::middleware::rate_limit::{RateLimitConfig, RateLimiter};
 use crate::http::middleware::{rate_limit, request_id};
+use crate::infra::security::slowdown::LoginSlowdown;
 use crate::{error::AppError, modules, state::AppState};
 
 pub fn build_router(state: AppState) -> Router {
     let rate_limiter = std::sync::Arc::new(RateLimiter::new(RateLimitConfig::from_env()));
+    let login_slowdown = std::sync::Arc::new(LoginSlowdown::from_env());
 
     Router::new()
         .merge(modules::router())
@@ -18,6 +20,7 @@ pub fn build_router(state: AppState) -> Router {
         .fallback(fallback_404)
         .layer(middleware::from_fn(request_id::request_id))
         .layer(middleware::from_fn(rate_limit::auth_rate_limit))
+        .layer(Extension(login_slowdown))
         .layer(Extension(rate_limiter))
         .layer(cors_layer_from_env())
 }
