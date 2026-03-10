@@ -1,5 +1,7 @@
 use axum::http::{HeaderMap, Method};
 
+use kradra_core::auth::errors::AuthError;
+
 #[derive(Debug, Clone)]
 pub struct RequestMeta {
     pub method: Method,
@@ -16,6 +18,19 @@ impl RequestMeta {
             ip: client_ip(headers),
             user_agent: user_agent(headers),
         }
+    }
+}
+
+pub fn auth_error_reason(err: &AuthError) -> &'static str {
+    match err {
+        AuthError::InvalidCredentials => "invalid_credentials",
+        AuthError::BadRequest(_) => "bad_request",
+        AuthError::UserAlreadyExists => "user_already_exists",
+        AuthError::TokenExpired => "token_expired",
+        AuthError::TokenInvalid => "token_invalid",
+        AuthError::Forbidden => "forbidden",
+        AuthError::Unauthorized => "unauthorized",
+        AuthError::Internal => "internal_error",
     }
 }
 

@@ -22,11 +22,13 @@ pub async fn register(
 
     if username.is_empty() {
         audit::auth_register_fail(&meta, "", "username_empty");
+
         return Err(AppError::bad_request("username is required"));
     }
 
     if req.password.len() < 8 {
         audit::auth_register_fail(&meta, &username, "password_too_short");
+
         return Err(AppError::bad_request(
             "password must be at least 8 characters",
         ));
@@ -42,12 +44,9 @@ pub async fn register(
     {
         Ok(value) => value,
         Err(err) => {
-            let reason = match &err {
-                kradra_core::auth::errors::AuthError::UserAlreadyExists => "user_already_exists",
-                _ => "usecase_error",
-            };
-
+            let reason = audit::auth_error_reason(&err);
             audit::auth_register_fail(&meta, &username, reason);
+
             return Err(AppError::from(err));
         }
     };
@@ -92,7 +91,9 @@ pub async fn login(
             value
         }
         Err(err) => {
-            audit::auth_login_fail(&meta, &req.username, "usecase_error");
+            let reason = audit::auth_error_reason(&err);
+            audit::auth_login_fail(&meta, &req.username, reason);
+
             return Err(AppError::from(err));
         }
     };
@@ -124,6 +125,7 @@ pub async fn refresh(
 
     if let Err(err) = cookies::csrf::enforce_csrf_if_web(&headers) {
         audit::auth_refresh_fail(&meta, "csrf");
+
         return Err(err);
     }
 
@@ -131,6 +133,7 @@ pub async fn refresh(
         Some(value) => value,
         None => {
             audit::auth_refresh_fail(&meta, "missing_refresh_token");
+
             return Err(AppError::Unauthorized);
         }
     };
@@ -154,7 +157,9 @@ pub async fn refresh(
             value
         }
         Err(err) => {
-            audit::auth_refresh_fail(&meta, "usecase_error");
+            let reason = audit::auth_error_reason(&err);
+            audit::auth_refresh_fail(&meta, reason);
+
             return Err(AppError::from(err));
         }
     };
@@ -185,6 +190,7 @@ pub async fn logout(
 
     if let Err(err) = cookies::csrf::enforce_csrf_if_web(&headers) {
         audit::auth_logout_fail(&meta, "csrf");
+
         return Err(err);
     }
 
@@ -192,6 +198,7 @@ pub async fn logout(
         Some(value) => value,
         None => {
             audit::auth_logout_fail(&meta, "missing_refresh_token");
+
             return Err(AppError::Unauthorized);
         }
     };
@@ -203,13 +210,15 @@ pub async fn logout(
     )
     .await
     {
-        audit::auth_logout_fail(&meta, "usecase_error");
+        let reason = audit::auth_error_reason(&err);
+        audit::auth_logout_fail(&meta, reason);
+
         return Err(AppError::from(err));
     }
 
-    let response_headers = cookies::refresh::clear_session_cookies(&state)?;
-
     audit::auth_logout_success(&meta);
+
+    let response_headers = cookies::refresh::clear_session_cookies(&state)?;
 
     Ok((response_headers, Json(LogoutResponse {})))
 }
