@@ -46,8 +46,12 @@ fn cors_layer_from_env() -> CorsLayer {
             header::CONTENT_TYPE,
             header::AUTHORIZATION,
             header::HeaderName::from_static("x-csrf-token"),
+            header::HeaderName::from_static("x-request-id"),
         ])
-        .expose_headers([header::SET_COOKIE]);
+        .expose_headers([
+            header::SET_COOKIE,
+            header::HeaderName::from_static("x-request-id"),
+        ]);
 
     layer = if origins.is_empty() {
         layer.allow_origin(AllowOrigin::exact(HeaderValue::from_static("null")))
