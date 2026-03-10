@@ -28,6 +28,9 @@ jsonwebtoken = { version = "10.3.0", default-features = false, features = ["rust
 sha2 = "0.10.9"
 base64 = "0.22.1"
 
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
 
 
 

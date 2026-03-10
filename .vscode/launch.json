@@ -24,6 +24,9 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            "env": {
+                "RUST_LOG": "info"
+            },
             "type": "lldb",
             "request": "launch",
             "name": "Debug executable 'kradra-api'",

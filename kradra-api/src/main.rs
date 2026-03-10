@@ -6,8 +6,12 @@ mod infra;
 mod modules;
 mod state;
 
+use crate::infra::telemetry;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    telemetry::logging::init();
+
     let app_state = state::AppState::from_env()
         .await
         .expect("failed to init AppState");
