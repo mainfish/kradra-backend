@@ -6,6 +6,7 @@ use axum::Extension;
 use axum::middleware;
 
 use crate::http::middleware::rate_limit::{RateLimitConfig, RateLimiter};
+use crate::http::middleware::{rate_limit, request_id};
 use crate::{error::AppError, modules, state::AppState};
 
 pub fn build_router(state: AppState) -> Router {
@@ -15,9 +16,8 @@ pub fn build_router(state: AppState) -> Router {
         .merge(modules::router())
         .with_state(state)
         .fallback(fallback_404)
-        .layer(middleware::from_fn(
-            crate::http::middleware::rate_limit::auth_rate_limit,
-        ))
+        .layer(middleware::from_fn(request_id::request_id))
+        .layer(middleware::from_fn(rate_limit::auth_rate_limit))
         .layer(Extension(rate_limiter))
         .layer(cors_layer_from_env())
 }

@@ -8,6 +8,7 @@ pub struct RequestMeta {
     pub path: String,
     pub ip: String,
     pub user_agent: String,
+    pub request_id: String,
 }
 
 impl RequestMeta {
@@ -17,6 +18,11 @@ impl RequestMeta {
             path: path.into(),
             ip: client_ip(headers),
             user_agent: user_agent(headers),
+            request_id: headers
+                .get("x-request-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
         }
     }
 }
@@ -73,6 +79,7 @@ pub fn auth_register_success(meta: &RequestMeta, username: &str, user_id: &str) 
         event = "auth.register.success",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username,
@@ -85,6 +92,7 @@ pub fn auth_register_fail(meta: &RequestMeta, username: &str, reason: &str) {
         event = "auth.register.fail",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username,
@@ -97,6 +105,7 @@ pub fn auth_login_success(meta: &RequestMeta, username: &str) {
         event = "auth.login.success",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username
@@ -108,6 +117,7 @@ pub fn auth_login_fail(meta: &RequestMeta, username: &str, reason: &str) {
         event = "auth.login.fail",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username,
@@ -120,6 +130,7 @@ pub fn auth_refresh_success(meta: &RequestMeta) {
         event = "auth.refresh.success",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent
     );
@@ -130,6 +141,7 @@ pub fn auth_refresh_fail(meta: &RequestMeta, reason: &str) {
         event = "auth.refresh.fail",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent,
         reason = %reason
@@ -141,6 +153,7 @@ pub fn auth_logout_success(meta: &RequestMeta) {
         event = "auth.logout.success",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent
     );
@@ -151,6 +164,7 @@ pub fn auth_logout_fail(meta: &RequestMeta, reason: &str) {
         event = "auth.logout.fail",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent,
         reason = %reason
@@ -162,6 +176,7 @@ pub fn auth_csrf_issue(meta: &RequestMeta) {
         event = "auth.csrf.issue",
         method = ?meta.method,
         path = %meta.path,
+        request_id = %meta.request_id,
         ip = %meta.ip,
         ua = %meta.user_agent
     );
