@@ -41,9 +41,19 @@ pub fn auth_error_reason(err: &AuthError) -> &'static str {
 }
 
 fn client_ip(headers: &HeaderMap) -> String {
-    if let Some(forwarded_for) = headers.get("x-forwarded-for") {
-        if let Ok(value) = forwarded_for.to_str() {
-            if let Some(first_ip) = value.split(',').next() {
+    // Internal header set by our middleware (from proxy headers or ConnectInfo).
+    if let Some(value) = headers.get("x-client-ip") {
+        if let Ok(text) = value.to_str() {
+            let ip = text.trim();
+            if !ip.is_empty() {
+                return ip.to_string();
+            }
+        }
+    }
+
+    if let Some(value) = headers.get("x-forwarded-for") {
+        if let Ok(text) = value.to_str() {
+            if let Some(first_ip) = text.split(',').next() {
                 let ip = first_ip.trim();
                 if !ip.is_empty() {
                     return ip.to_string();
@@ -52,11 +62,35 @@ fn client_ip(headers: &HeaderMap) -> String {
         }
     }
 
-    if let Some(real_ip) = headers.get("x-real-ip") {
-        if let Ok(value) = real_ip.to_str() {
-            let ip = value.trim();
+    if let Some(value) = headers.get("x-real-ip") {
+        if let Ok(text) = value.to_str() {
+            let ip = text.trim();
             if !ip.is_empty() {
                 return ip.to_string();
+            }
+        }
+    }
+
+    if let Some(value) = headers.get("forwarded") {
+        if let Ok(text) = value.to_str() {
+            // Minimal parse: Forwarded: for=1.2.3.4;proto=https;by=...
+            for part in text.split(';') {
+                let part = part.trim();
+                if let Some(rest) = part.strip_prefix("for=") {
+                    let for_value = rest.trim().trim_matches('"');
+
+                    // IPv6 may be in brackets: for="[2001:db8::1]"
+                    if let Some(stripped) = for_value.strip_prefix('[') {
+                        if let Some(end) = stripped.find(']') {
+                            return stripped[..end].to_string();
+                        }
+                    }
+
+                    let ip_only = for_value.split(':').next().unwrap_or(for_value).trim();
+                    if !ip_only.is_empty() {
+                        return ip_only.to_string();
+                    }
+                }
             }
         }
     }

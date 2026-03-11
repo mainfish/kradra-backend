@@ -18,6 +18,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(modules::router())
         .with_state(state)
         .fallback(fallback_404)
+        .layer(middleware::from_fn(request_id::client_ip))
         .layer(middleware::from_fn(request_id::request_id))
         .layer(middleware::from_fn(rate_limit::auth_rate_limit))
         .layer(Extension(login_slowdown))
