@@ -91,8 +91,6 @@ pub async fn login(
         .and_then(|v| v.parse::<i64>().ok())
         .unwrap_or(900);
 
-    tracing::info!(event = "auth.lockout.policy", max_failures, lockout_seconds);
-
     let lockout_state = state
         .db_adapters
         .user_repo
