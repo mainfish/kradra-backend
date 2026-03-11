@@ -181,3 +181,16 @@ pub fn auth_csrf_issue(meta: &RequestMeta) {
         ua = %meta.user_agent
     );
 }
+
+pub fn auth_lockout_triggered(meta: &RequestMeta, username: &str, user_id: &str) {
+    tracing::warn!(
+        event = "auth.lockout.triggered",
+        method = ?meta.method,
+        path = %meta.path,
+        request_id = %meta.request_id,
+        ip = %meta.ip,
+        ua = %meta.user_agent,
+        username = %username,
+        user_id = %user_id
+    );
+}

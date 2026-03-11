@@ -4,14 +4,14 @@ use axum::{
     http::{HeaderMap, Method},
 };
 
+use kradra_core::auth::errors::AuthError;
+
 use super::dto::{
     LoginRequest, LoginResponse, LogoutRequest, LogoutResponse, RefreshRequest, RefreshResponse,
     RegisterRequest, RegisterResponse, RegisterUser,
 };
 
-use kradra_core::auth::errors::AuthError;
-
-use crate::infra::db::user_repo::PgUserRepo;
+use crate::infra::security::lockout::LockoutService;
 use crate::infra::telemetry::audit;
 use crate::{error::AppError, http::cookies, state::AppState};
 
@@ -81,29 +81,17 @@ pub async fn login(
 
     login_slowdown.maybe_delay(&ip, &username_key).await;
 
-    let max_failures: i32 = std::env::var("AUTH_LOCKOUT_MAX_FAILURES")
-        .ok()
-        .and_then(|v| v.parse::<i32>().ok())
-        .unwrap_or(10);
+    let lockout_service = LockoutService::from_env();
 
-    let lockout_seconds: i64 = std::env::var("AUTH_LOCKOUT_SECONDS")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(900);
-
-    let lockout_state = state
-        .db_adapters
-        .user_repo
-        .get_lockout_state_by_username(&req.username)
+    let lockout_check = lockout_service
+        .check(&state.db_adapters.user_repo, &req.username)
         .await
         .map_err(AppError::from)?;
 
-    if let Some(state_row) = &lockout_state {
-        if PgUserRepo::is_locked_now(state_row) {
-            audit::auth_login_fail(&meta, &req.username, "locked");
+    if lockout_check.is_locked {
+        audit::auth_login_fail(&meta, &req.username, "locked");
 
-            return Err(AppError::Locked("account locked".to_string()));
-        }
+        return Err(AppError::Locked("account locked".to_string()));
     }
 
     let access_ttl_seconds = state.crypto_adapters.auth_config.access_ttl_seconds;
@@ -124,13 +112,12 @@ pub async fn login(
     {
         Ok(value) => {
             audit::auth_login_success(&meta, &req.username);
+
             login_slowdown.reset(&ip, &username_key).await;
 
-            if let Some(state_row) = &lockout_state {
-                state
-                    .db_adapters
-                    .user_repo
-                    .reset_login_failures(&state_row.id)
+            if let Some(user_id) = lockout_check.user_id.as_deref() {
+                lockout_service
+                    .reset_on_success(&state.db_adapters.user_repo, user_id)
                     .await
                     .map_err(AppError::from)?;
             }
@@ -141,13 +128,15 @@ pub async fn login(
             if matches!(err, AuthError::InvalidCredentials) {
                 login_slowdown.record_failure(&ip, &username_key).await;
 
-                if let Some(state_row) = &lockout_state {
-                    state
-                        .db_adapters
-                        .user_repo
-                        .record_login_failure(&state_row.id, max_failures, lockout_seconds)
+                if let Some(user_id) = lockout_check.user_id.as_deref() {
+                    let triggered = lockout_service
+                        .record_failure(&state.db_adapters.user_repo, user_id)
                         .await
                         .map_err(AppError::from)?;
+
+                    if triggered {
+                        audit::auth_lockout_triggered(&meta, &req.username, user_id);
+                    }
                 }
             }
 
@@ -214,6 +203,7 @@ pub async fn refresh(
     {
         Ok(value) => {
             audit::auth_refresh_success(&meta);
+
             value
         }
         Err(err) => {

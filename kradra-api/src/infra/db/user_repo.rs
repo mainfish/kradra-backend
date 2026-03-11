@@ -78,31 +78,51 @@ impl PgUserRepo {
         }))
     }
 
+    /// Returns true only when lockout transitions from unlocked -> locked (first time).
     pub async fn record_login_failure(
         &self,
         user_id: &str,
         max_failures: i32,
         lockout_seconds: i64,
-    ) -> Result<(), AuthError> {
-        sqlx::query(
+    ) -> Result<bool, AuthError> {
+        let row = sqlx::query(
             r#"
+        WITH prev AS (
+            SELECT failed_login_attempts, locked_until
+            FROM users
+            WHERE id = ($1)::uuid
+        ),
+        upd AS (
             UPDATE users
             SET failed_login_attempts = failed_login_attempts + 1,
                 locked_until = CASE
-                    WHEN failed_login_attempts + 1 >= $2 THEN NOW() + ($3 * INTERVAL '1 second')
+                    WHEN failed_login_attempts + 1 >= $2
+                         AND (locked_until IS NULL OR locked_until <= NOW())
+                        THEN NOW() + ($3 * INTERVAL '1 second')
                     ELSE locked_until
                 END
             WHERE id = ($1)::uuid
-            "#,
+            RETURNING failed_login_attempts, locked_until
+        )
+        SELECT
+            (
+                (prev.locked_until IS NULL OR prev.locked_until <= NOW())
+                AND upd.failed_login_attempts >= $2
+                AND upd.locked_until IS NOT NULL
+            ) AS triggered
+        FROM prev, upd
+        "#,
         )
         .bind(user_id)
         .bind(max_failures)
         .bind(lockout_seconds)
-        .execute(&self.db)
+        .fetch_one(&self.db)
         .await
         .map_err(|_| AuthError::Internal)?;
 
-        Ok(())
+        let triggered: bool = row.try_get("triggered").map_err(|_| AuthError::Internal)?;
+
+        Ok(triggered)
     }
 
     pub async fn reset_login_failures(&self, user_id: &str) -> Result<(), AuthError> {
