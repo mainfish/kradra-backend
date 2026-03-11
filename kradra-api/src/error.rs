@@ -11,6 +11,7 @@ pub enum AppError {
     Unauthorized,
     Forbidden,
     NotFound,
+    Locked(String),
     Conflict(String),
     BadRequest(String),
     ServiceUnavailable(String),
@@ -52,6 +53,7 @@ impl fmt::Display for AppError {
             AppError::Unauthorized => write!(f, "unauthorized"),
             AppError::Forbidden => write!(f, "forbidden"),
             AppError::NotFound => write!(f, "not found"),
+            AppError::Locked(message) => write!(f, "{message}"),
             AppError::Conflict(message) => write!(f, "{message}"),
             AppError::BadRequest(message) => write!(f, "{message}"),
             AppError::ServiceUnavailable(message) => write!(f, "{message}"),
@@ -84,6 +86,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+            AppError::Locked(_) => (StatusCode::LOCKED, "locked"),
             AppError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             AppError::ServiceUnavailable(_) => {

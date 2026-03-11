@@ -22,9 +22,6 @@ impl AppState {
     }
 
     pub async fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Load .env if present
-        dotenvy::dotenv().ok();
-
         let database_url = env::var("DATABASE_URL")?;
         let db = PgPoolOptions::new()
             .max_connections(5)

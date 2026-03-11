@@ -1,4 +1,4 @@
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Row, types::time::OffsetDateTime};
 
 use kradra_core::auth::errors::AuthError;
 use kradra_core::auth::ports::{CreatedUserRecord, UserRecord, UserRepo};
@@ -11,6 +11,102 @@ pub struct PgUserRepo {
 impl PgUserRepo {
     pub fn new(db: PgPool) -> Self {
         Self { db }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UserLockoutState {
+    pub id: String,
+    pub failed_login_attempts: i32,
+    pub locked_until: Option<OffsetDateTime>,
+}
+
+impl PgUserRepo {
+    pub fn is_locked_now(state: &UserLockoutState) -> bool {
+        match state.locked_until {
+            Some(locked_until) => locked_until > OffsetDateTime::now_utc(),
+            None => false,
+        }
+    }
+    pub async fn get_lockout_state_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<UserLockoutState>, AuthError> {
+        let row = sqlx::query(
+            r#"
+            SELECT id::text as id,
+                   failed_login_attempts,
+                   locked_until
+            FROM users
+            WHERE username = $1
+            "#,
+        )
+        .bind(username)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
+        let failed_login_attempts: i32 = row
+            .try_get("failed_login_attempts")
+            .map_err(|_| AuthError::Internal)?;
+        let locked_until: Option<OffsetDateTime> = row
+            .try_get("locked_until")
+            .map_err(|_| AuthError::Internal)?;
+
+        Ok(Some(UserLockoutState {
+            id,
+            failed_login_attempts,
+            locked_until,
+        }))
+    }
+
+    pub async fn record_login_failure(
+        &self,
+        user_id: &str,
+        max_failures: i32,
+        lockout_seconds: i64,
+    ) -> Result<(), AuthError> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET failed_login_attempts = failed_login_attempts + 1,
+                locked_until = CASE
+                    WHEN failed_login_attempts + 1 >= $2 THEN NOW() + ($3 * INTERVAL '1 second')
+                    ELSE locked_until
+                END
+            WHERE id = ($1)::uuid
+            "#,
+        )
+        .bind(user_id)
+        .bind(max_failures)
+        .bind(lockout_seconds)
+        .execute(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        Ok(())
+    }
+
+    pub async fn reset_login_failures(&self, user_id: &str) -> Result<(), AuthError> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET failed_login_attempts = 0,
+                locked_until = NULL
+            WHERE id = ($1)::uuid
+            "#,
+        )
+        .bind(user_id)
+        .execute(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        Ok(())
     }
 }
 

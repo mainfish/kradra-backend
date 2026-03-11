@@ -11,6 +11,7 @@ use super::dto::{
 
 use kradra_core::auth::errors::AuthError;
 
+use crate::infra::db::user_repo::PgUserRepo;
 use crate::infra::telemetry::audit;
 use crate::{error::AppError, http::cookies, state::AppState};
 
@@ -80,6 +81,33 @@ pub async fn login(
 
     login_slowdown.maybe_delay(&ip, &username_key).await;
 
+    let max_failures: i32 = std::env::var("AUTH_LOCKOUT_MAX_FAILURES")
+        .ok()
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(10);
+
+    let lockout_seconds: i64 = std::env::var("AUTH_LOCKOUT_SECONDS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(900);
+
+    tracing::info!(event = "auth.lockout.policy", max_failures, lockout_seconds);
+
+    let lockout_state = state
+        .db_adapters
+        .user_repo
+        .get_lockout_state_by_username(&req.username)
+        .await
+        .map_err(AppError::from)?;
+
+    if let Some(state_row) = &lockout_state {
+        if PgUserRepo::is_locked_now(state_row) {
+            audit::auth_login_fail(&meta, &req.username, "locked");
+
+            return Err(AppError::Locked("account locked".to_string()));
+        }
+    }
+
     let access_ttl_seconds = state.crypto_adapters.auth_config.access_ttl_seconds;
     let refresh_ttl_days = state.crypto_adapters.auth_config.refresh_ttl_days;
 
@@ -99,11 +127,30 @@ pub async fn login(
         Ok(value) => {
             audit::auth_login_success(&meta, &req.username);
             login_slowdown.reset(&ip, &username_key).await;
+
+            if let Some(state_row) = &lockout_state {
+                state
+                    .db_adapters
+                    .user_repo
+                    .reset_login_failures(&state_row.id)
+                    .await
+                    .map_err(AppError::from)?;
+            }
+
             value
         }
         Err(err) => {
             if matches!(err, AuthError::InvalidCredentials) {
                 login_slowdown.record_failure(&ip, &username_key).await;
+
+                if let Some(state_row) = &lockout_state {
+                    state
+                        .db_adapters
+                        .user_repo
+                        .record_login_failure(&state_row.id, max_failures, lockout_seconds)
+                        .await
+                        .map_err(AppError::from)?;
+                }
             }
 
             let reason = audit::auth_error_reason(&err);
