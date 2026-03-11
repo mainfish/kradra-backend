@@ -28,6 +28,7 @@ impl PgUserRepo {
             None => false,
         }
     }
+
     pub async fn get_lockout_state_by_username(
         &self,
         username: &str,
@@ -57,6 +58,18 @@ impl PgUserRepo {
         let locked_until: Option<OffsetDateTime> = row
             .try_get("locked_until")
             .map_err(|_| AuthError::Internal)?;
+
+        if let Some(locked_until_value) = locked_until {
+            if locked_until_value <= OffsetDateTime::now_utc() {
+                self.reset_login_failures(&id).await?;
+
+                return Ok(Some(UserLockoutState {
+                    id,
+                    failed_login_attempts: 0,
+                    locked_until: None,
+                }));
+            }
+        }
 
         Ok(Some(UserLockoutState {
             id,
