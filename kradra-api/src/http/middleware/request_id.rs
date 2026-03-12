@@ -8,6 +8,26 @@ use std::net::SocketAddr;
 const REQUEST_ID_HEADER: &str = "x-request-id";
 const CLIENT_IP_HEADER: &str = "x-client-ip";
 
+fn trust_proxy_headers() -> bool {
+    std::env::var("TRUST_PROXY_HEADERS")
+        .ok()
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
+fn is_trusted_proxy_ip(peer_ip: &str) -> bool {
+    let list = std::env::var("TRUSTED_PROXY_IPS").unwrap_or_default();
+
+    for item in list.split(',') {
+        let ip = item.trim();
+        if !ip.is_empty() && ip == peer_ip {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn generate_request_id() -> String {
     use rand_core::{OsRng, RngCore};
 
@@ -80,92 +100,34 @@ fn is_valid_request_id(request_id: &str) -> bool {
     matches!(bytes[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
 }
 
-fn first_ip_from_x_forwarded_for(value: &str) -> Option<String> {
-    // Format: client, proxy1, proxy2
-    let first = value.split(',').next()?.trim();
-    if first.is_empty() {
-        return None;
-    }
-
-    // Strip optional port
-    let ip_only = first.split(':').next().unwrap_or(first).trim();
-    if ip_only.is_empty() {
-        return None;
-    }
-
-    Some(ip_only.to_string())
-}
-
-fn ip_from_forwarded_header(value: &str) -> Option<String> {
-    // Tiny parser for RFC 7239 Forwarded: for=1.2.3.4;proto=https;by=...
-    for part in value.split(';') {
-        let part = part.trim();
-
-        if let Some(rest) = part.strip_prefix("for=") {
-            let for_value = rest.trim().trim_matches('"');
-
-            // IPv6 may be in brackets: for="[2001:db8::1]"
-            if let Some(stripped) = for_value.strip_prefix('[') {
-                if let Some(end) = stripped.find(']') {
-                    return Some(stripped[..end].to_string());
-                }
-            }
-
-            // Strip optional port
-            let ip_only = for_value.split(':').next().unwrap_or(for_value).trim();
-            if !ip_only.is_empty() {
-                return Some(ip_only.to_string());
-            }
-        }
-    }
-
-    None
-}
-
-fn extract_client_ip_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
-    // Prefer standard proxy headers.
-    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        if let Some(ip) = first_ip_from_x_forwarded_for(value) {
-            return Some(ip);
-        }
-    }
-
-    if let Some(value) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
-        let ip = value.trim();
-        if !ip.is_empty() {
-            return Some(ip.to_string());
-        }
-    }
-
-    if let Some(value) = headers.get("forwarded").and_then(|v| v.to_str().ok()) {
-        if let Some(ip) = ip_from_forwarded_header(value) {
-            return Some(ip);
-        }
-    }
-
-    None
-}
-
 pub async fn client_ip(mut req: Request<Body>, next: Next) -> Response {
     let header_name = HeaderName::from_static(CLIENT_IP_HEADER);
 
-    // If already set by an upstream proxy/middleware, keep it.
-    let mut client_ip = req
-        .headers()
-        .get(&header_name)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
+    // Peer ip from socket (requires ConnectInfo enabled in main).
+    let peer_ip = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| addr.ip().to_string());
 
-    if client_ip.is_none() {
-        client_ip = extract_client_ip_from_headers(req.headers());
+    let mut client_ip: Option<String> = None;
+
+    // Trust X-Real-IP only when request comes from a trusted proxy.
+    if trust_proxy_headers() {
+        if let Some(peer_ip_value) = &peer_ip {
+            if is_trusted_proxy_ip(peer_ip_value) {
+                if let Some(value) = req.headers().get("x-real-ip").and_then(|v| v.to_str().ok()) {
+                    let ip = value.trim();
+                    if !ip.is_empty() {
+                        client_ip = Some(ip.to_string());
+                    }
+                }
+            }
+        }
     }
 
+    // Fallback: always use peer ip.
     if client_ip.is_none() {
-        // Fallback to socket peer addr when running without a proxy.
-        if let Some(ConnectInfo(addr)) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
-            client_ip = Some(addr.ip().to_string());
-        }
+        client_ip = peer_ip;
     }
 
     if let Some(ip) = client_ip {
