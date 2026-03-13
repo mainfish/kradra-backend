@@ -141,6 +141,23 @@ impl PgUserRepo {
 
         Ok(())
     }
+
+    pub async fn set_role_by_username(&self, username: &str, role: &str) -> Result<u64, AuthError> {
+        let result = sqlx::query(
+            r#"
+        UPDATE users
+        SET role = $2
+        WHERE username = $1
+        "#,
+        )
+        .bind(username)
+        .bind(role)
+        .execute(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        Ok(result.rows_affected())
+    }
 }
 
 impl UserRepo for PgUserRepo {
