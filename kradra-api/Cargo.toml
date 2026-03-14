@@ -1,5 +1,6 @@
 [package]
 name = "kradra-api"
+default-run = "kradra-api"
 version = "0.1.0"
 edition = "2024"
 

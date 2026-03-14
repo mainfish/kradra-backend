@@ -1,7 +1,8 @@
 use sqlx::{PgPool, Row, types::time::OffsetDateTime};
 
 use kradra_core::auth::errors::AuthError;
-use kradra_core::auth::ports::{CreatedUserRecord, UserRecord, UserRepo};
+use kradra_core::auth::models::{AuthUser, Role, User};
+use kradra_core::auth::ports::UserRepo;
 
 #[derive(Clone)]
 pub struct PgUserRepo {
@@ -161,10 +162,10 @@ impl PgUserRepo {
 }
 
 impl UserRepo for PgUserRepo {
-    async fn find_by_username(&self, username: &str) -> Result<Option<UserRecord>, AuthError> {
+    async fn find_by_username(&self, username: &str) -> Result<User, AuthError> {
         let row = sqlx::query(
             r#"
-            SELECT id::text as id, username, password_hash, role, is_active
+            SELECT id::text as id, username, password_hash, role, is_active, created_at::text as created_at
             FROM users
             WHERE username = $1
             "#,
@@ -175,7 +176,7 @@ impl UserRepo for PgUserRepo {
         .map_err(|_| AuthError::Internal)?;
 
         let Some(row) = row else {
-            return Ok(None);
+            return Err(AuthError::UserNotFound);
         };
 
         let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
@@ -184,24 +185,24 @@ impl UserRepo for PgUserRepo {
             .try_get("password_hash")
             .map_err(|_| AuthError::Internal)?;
         let role_str: String = row.try_get("role").map_err(|_| AuthError::Internal)?;
+        let role = Role::try_from(role_str.as_str()).map_err(|_| AuthError::Internal)?;
         let is_active: bool = row.try_get("is_active").map_err(|_| AuthError::Internal)?;
+        let created_at: String = row.try_get("created_at").map_err(|_| AuthError::Internal)?;
 
-        let role = kradra_core::auth::types::Role::try_from(role_str.as_str())
-            .map_err(|_| AuthError::Internal)?;
-
-        Ok(Some(UserRecord {
+        Ok(User {
             id,
             username,
             password_hash,
             role,
             is_active,
-        }))
+            created_at,
+        })
     }
 
-    async fn find_by_id(&self, user_id: &str) -> Result<Option<UserRecord>, AuthError> {
+    async fn find_by_id(&self, user_id: &str) -> Result<User, AuthError> {
         let row = sqlx::query(
             r#"
-            SELECT id::text as id, username, password_hash, role, is_active
+            SELECT id::text as id, username, password_hash, role, is_active, created_at::text as created_at
             FROM users
             WHERE id = ($1)::uuid
             "#,
@@ -212,7 +213,7 @@ impl UserRepo for PgUserRepo {
         .map_err(|_| AuthError::Internal)?;
 
         let Some(row) = row else {
-            return Ok(None);
+            return Err(AuthError::UserNotFound);
         };
 
         let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
@@ -221,25 +222,25 @@ impl UserRepo for PgUserRepo {
             .try_get("password_hash")
             .map_err(|_| AuthError::Internal)?;
         let role_str: String = row.try_get("role").map_err(|_| AuthError::Internal)?;
+        let role = Role::try_from(role_str.as_str()).map_err(|_| AuthError::Internal)?;
         let is_active: bool = row.try_get("is_active").map_err(|_| AuthError::Internal)?;
+        let created_at: String = row.try_get("created_at").map_err(|_| AuthError::Internal)?;
 
-        let role = kradra_core::auth::types::Role::try_from(role_str.as_str())
-            .map_err(|_| AuthError::Internal)?;
-
-        Ok(Some(UserRecord {
+        Ok(User {
             id,
             username,
             password_hash,
             role,
             is_active,
-        }))
+            created_at,
+        })
     }
 
     async fn create_user(
         &self,
         username: &str,
         password_hash: &str,
-    ) -> Result<CreatedUserRecord, AuthError> {
+    ) -> Result<AuthUser, AuthError> {
         let inserted = sqlx::query(
             r#"
             INSERT INTO users (username, password_hash)
@@ -256,7 +257,6 @@ impl UserRepo for PgUserRepo {
             Ok(row) => row,
             Err(err) => {
                 if let sqlx::Error::Database(db_err) = &err {
-                    // unique_violation
                     if db_err.code().as_deref() == Some("23505") {
                         return Err(AuthError::UserAlreadyExists);
                     }
@@ -268,10 +268,8 @@ impl UserRepo for PgUserRepo {
         let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
         let username: String = row.try_get("username").map_err(|_| AuthError::Internal)?;
         let role_str: String = row.try_get("role").map_err(|_| AuthError::Internal)?;
+        let role = Role::try_from(role_str.as_str()).map_err(|_| AuthError::Internal)?;
 
-        let role = kradra_core::auth::types::Role::try_from(role_str.as_str())
-            .map_err(|_| AuthError::Internal)?;
-
-        Ok(CreatedUserRecord { id, username, role })
+        Ok(AuthUser { id, username, role })
     }
 }

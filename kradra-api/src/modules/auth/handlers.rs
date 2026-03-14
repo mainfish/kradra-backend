@@ -92,6 +92,11 @@ pub async fn login(
     let is_web = cookies::csrf::is_web_request(&headers);
 
     let ip = meta.ip.clone();
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string())
+        .clone();
     let username_key = req.username.clone();
 
     login_slowdown.maybe_delay(&ip, &username_key).await;
@@ -115,11 +120,13 @@ pub async fn login(
     let out = match kradra_core::auth::usecases::login(
         &state.db_adapters.user_repo,
         &state.crypto_adapters.password_hasher,
-        &state.crypto_adapters.token_issuer,
-        &state.crypto_adapters.refresh_service,
+        &state.crypto_adapters.access_token_service,
+        &state.crypto_adapters.refresh_token_service,
         &state.db_adapters.refresh_token_store,
         &req.username,
         &req.password,
+        &ip,
+        user_agent,
         access_ttl_seconds,
         refresh_ttl_days,
     )
@@ -186,9 +193,14 @@ pub async fn refresh(
 ) -> Result<(HeaderMap, Json<RefreshResponse>), AppError> {
     let meta = audit::RequestMeta::from_headers(Method::POST, "/api/auth/refresh", &headers);
     let is_web = cookies::csrf::is_web_request(&headers);
+    let ip = meta.ip.clone();
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string());
 
     if let Err(err) = cookies::csrf::enforce_csrf_if_web(&headers) {
-        audit::auth_refresh_fail(&meta, "csrf");
+        audit::auth_refresh_fail(&meta, "csrf_mismatch");
 
         return Err(err);
     }
@@ -207,10 +219,12 @@ pub async fn refresh(
 
     let out = match kradra_core::auth::usecases::refresh(
         &state.db_adapters.user_repo,
-        &state.crypto_adapters.token_issuer,
-        &state.crypto_adapters.refresh_service,
+        &state.crypto_adapters.access_token_service,
+        &state.crypto_adapters.refresh_token_service,
         &state.db_adapters.refresh_token_store,
         &refresh_token,
+        &ip,
+        user_agent,
         access_ttl_seconds,
         refresh_ttl_days,
     )
@@ -254,7 +268,7 @@ pub async fn logout(
     let meta = audit::RequestMeta::from_headers(Method::POST, "/api/auth/logout", &headers);
 
     if let Err(err) = cookies::csrf::enforce_csrf_if_web(&headers) {
-        audit::auth_logout_fail(&meta, "csrf");
+        audit::auth_logout_fail(&meta, "csrf_mismatch");
 
         return Err(err);
     }
@@ -269,7 +283,7 @@ pub async fn logout(
     };
 
     if let Err(err) = kradra_core::auth::usecases::logout(
-        &state.crypto_adapters.refresh_service,
+        &state.crypto_adapters.refresh_token_service,
         &state.db_adapters.refresh_token_store,
         &refresh_token,
     )

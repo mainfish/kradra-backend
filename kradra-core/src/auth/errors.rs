@@ -2,9 +2,9 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AuthError {
-    /// Invalid username/password for login.
     InvalidCredentials,
-    /// Register input is invalid (e.g. empty username, short password).
+    InvalidRefreshToken,
+    UserNotFound,
     BadRequest(String),
     UserAlreadyExists,
     Unauthorized,
@@ -18,6 +18,8 @@ impl fmt::Display for AuthError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AuthError::InvalidCredentials => write!(f, "invalid credentials"),
+            AuthError::UserNotFound => write!(f, "user not found"),
+            AuthError::InvalidRefreshToken => write!(f, " invalid refresh token"),
             AuthError::BadRequest(msg) => write!(f, "{msg}"),
             AuthError::UserAlreadyExists => write!(f, "user already exists"),
             AuthError::Unauthorized => write!(f, "unauthorized"),

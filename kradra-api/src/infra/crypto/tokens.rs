@@ -6,8 +6,8 @@ use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kradra_core::auth::errors::AuthError;
-use kradra_core::auth::ports::{AccessTokenIssuer, AccessTokenVerifier, RefreshTokenService};
-use kradra_core::auth::types::{AuthUser, Role};
+use kradra_core::auth::models::{AuthUser, Role};
+use kradra_core::auth::ports::{AccessTokenCodec, RefreshTokenCodec};
 
 fn unix_now() -> i64 {
     SystemTime::now()
@@ -27,13 +27,13 @@ struct JwtAccessClaims {
 }
 
 #[derive(Clone)]
-pub struct JwtIssuer {
+pub struct JwtAccessTokenService {
     pub jwt_secret: String,
     pub access_ttl_seconds: i64,
 }
 
-impl AccessTokenIssuer for JwtIssuer {
-    fn issue_access(&self, user_id: &str, username: &str, role: Role) -> Result<String, AuthError> {
+impl AccessTokenCodec for JwtAccessTokenService {
+    fn generate(&self, user_id: &str, username: &str, role: Role) -> Result<String, AuthError> {
         let now = unix_now();
         let exp = now + self.access_ttl_seconds.max(1);
 
@@ -52,14 +52,7 @@ impl AccessTokenIssuer for JwtIssuer {
         )
         .map_err(|_| AuthError::Internal)
     }
-}
 
-#[derive(Clone)]
-pub struct JwtAccessVerifier {
-    pub jwt_secret: String,
-}
-
-impl AccessTokenVerifier for JwtAccessVerifier {
     fn verify(&self, token: &str) -> Result<AuthUser, AuthError> {
         let claims =
             decode_access_claims(token, &self.jwt_secret).map_err(|_| AuthError::Unauthorized)?;
@@ -75,9 +68,9 @@ impl AccessTokenVerifier for JwtAccessVerifier {
 }
 
 #[derive(Clone, Default)]
-pub struct RefreshService;
+pub struct JwtRefreshTokenService;
 
-impl RefreshService {
+impl JwtRefreshTokenService {
     pub fn hash_refresh_token(refresh_plain: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(refresh_plain.as_bytes());
@@ -85,7 +78,7 @@ impl RefreshService {
     }
 }
 
-impl RefreshTokenService for RefreshService {
+impl RefreshTokenCodec for JwtRefreshTokenService {
     fn generate(&self) -> (String, String) {
         let mut bytes = [0u8; 32];
         OsRng.fill_bytes(&mut bytes);

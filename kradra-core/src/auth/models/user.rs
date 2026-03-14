@@ -1,7 +1,5 @@
 use std::fmt;
 
-use super::errors::AuthError;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Role {
     User,
@@ -30,6 +28,16 @@ impl TryFrom<&str> for Role {
 }
 
 #[derive(Debug, Clone)]
+pub struct User {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub role: Role,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct AuthUser {
     pub id: String,
     pub username: String,
@@ -39,13 +47,5 @@ pub struct AuthUser {
 impl AuthUser {
     pub fn is_admin(&self) -> bool {
         self.role == Role::Admin
-    }
-
-    pub fn require_admin(&self) -> Result<(), AuthError> {
-        if self.is_admin() {
-            Ok(())
-        } else {
-            Err(AuthError::Forbidden)
-        }
     }
 }

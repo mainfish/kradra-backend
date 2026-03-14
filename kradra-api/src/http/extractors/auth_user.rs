@@ -5,8 +5,9 @@ use axum::{
 
 use crate::{error::AppError, state::AppState};
 
-use kradra_core::auth::ports::AccessTokenVerifier;
-use kradra_core::auth::types::AuthUser;
+use kradra_core::auth::errors::AuthError;
+use kradra_core::auth::models::{AuthUser, Role};
+use kradra_core::auth::ports::AccessTokenCodec;
 
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
@@ -29,7 +30,7 @@ impl FromRequestParts<AppState> for AuthUser {
 
         let user = state
             .crypto_adapters
-            .access_verifier
+            .access_token_service
             .verify(token)
             .map_err(AppError::from)?;
 
@@ -38,5 +39,9 @@ impl FromRequestParts<AppState> for AuthUser {
 }
 
 pub fn require_admin(user: &AuthUser) -> Result<(), AppError> {
-    user.require_admin().map_err(AppError::from)
+    if user.role == Role::Admin {
+        return Ok(());
+    }
+
+    Err(AppError::from(AuthError::Forbidden))
 }

@@ -3,7 +3,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::env;
 
 use crate::infra::crypto::passwords::Argon2Hasher;
-use crate::infra::crypto::tokens::{JwtAccessVerifier, JwtIssuer, RefreshService};
+use crate::infra::crypto::tokens::{JwtAccessTokenService, JwtRefreshTokenService};
 use crate::infra::db::refresh_token_store::PgRefreshTokenStore;
 use crate::infra::db::user_repo::PgUserRepo;
 
@@ -105,27 +105,24 @@ impl Default for AuthConfig {
 pub struct CryptoAdapters {
     pub auth_config: AuthConfig,
     pub password_hasher: Argon2Hasher,
-    pub token_issuer: JwtIssuer,
-    pub access_verifier: JwtAccessVerifier,
-    pub refresh_service: RefreshService,
+    pub access_token_service: JwtAccessTokenService,
+    pub refresh_token_service: JwtRefreshTokenService,
 }
 
 impl Default for CryptoAdapters {
     fn default() -> Self {
         let auth_config = AuthConfig::default();
-
         let jwt_secret = auth_config.jwt_secret.clone();
         let access_ttl_seconds = auth_config.access_ttl_seconds;
 
         Self {
             auth_config,
             password_hasher: Argon2Hasher::default(),
-            token_issuer: JwtIssuer {
-                jwt_secret: jwt_secret.clone(),
+            access_token_service: JwtAccessTokenService {
+                jwt_secret: jwt_secret,
                 access_ttl_seconds,
             },
-            access_verifier: JwtAccessVerifier { jwt_secret },
-            refresh_service: RefreshService::default(),
+            refresh_token_service: JwtRefreshTokenService::default(),
         }
     }
 }

@@ -1,6 +1,6 @@
 use axum::Json;
 
-use kradra_core::auth::types::AuthUser;
+use kradra_core::auth::models::AuthUser;
 
 use super::dto::{MeResponse, MeUser};
 

@@ -69,6 +69,8 @@ impl From<AuthError> for AppError {
     fn from(err: AuthError) -> Self {
         match err {
             AuthError::InvalidCredentials => AppError::Unauthorized,
+            AuthError::InvalidRefreshToken => AppError::Unauthorized,
+            AuthError::UserNotFound => AppError::Unauthorized,
             AuthError::BadRequest(msg) => AppError::BadRequest(msg),
             AuthError::UserAlreadyExists => AppError::Conflict(err.to_string()),
             AuthError::Unauthorized => AppError::Unauthorized,

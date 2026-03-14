@@ -1,6 +1,6 @@
 use axum::Json;
 
-use kradra_core::auth::types::AuthUser;
+use kradra_core::auth::models::AuthUser;
 
 use crate::http::extractors::auth_user::require_admin;
 

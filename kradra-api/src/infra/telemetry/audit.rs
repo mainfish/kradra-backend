@@ -2,6 +2,8 @@ use axum::http::{HeaderMap, Method};
 
 use kradra_core::auth::errors::AuthError;
 
+use crate::http::cookies;
+
 #[derive(Debug, Clone)]
 pub struct RequestMeta {
     pub method: Method,
@@ -9,6 +11,7 @@ pub struct RequestMeta {
     pub ip: String,
     pub user_agent: String,
     pub request_id: String,
+    pub is_web: String,
 }
 
 impl RequestMeta {
@@ -23,6 +26,7 @@ impl RequestMeta {
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "unknown".to_string()),
+            is_web: cookies::csrf::is_web_request(&headers).to_string(),
         }
     }
 }
@@ -30,6 +34,8 @@ impl RequestMeta {
 pub fn auth_error_reason(err: &AuthError) -> &'static str {
     match err {
         AuthError::InvalidCredentials => "invalid_credentials",
+        AuthError::InvalidRefreshToken => "invalid_refresh_token",
+        AuthError::UserNotFound => "user_not_found",
         AuthError::BadRequest(_) => "bad_request",
         AuthError::UserAlreadyExists => "user_already_exists",
         AuthError::TokenExpired => "token_expired",
@@ -61,10 +67,12 @@ fn user_agent(headers: &HeaderMap) -> String {
 
 pub fn auth_register_success(meta: &RequestMeta, username: &str, user_id: &str) {
     tracing::info!(
-        event = "auth.register.success",
+        event = "auth.register",
+        outcome = "success",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username,
@@ -74,10 +82,12 @@ pub fn auth_register_success(meta: &RequestMeta, username: &str, user_id: &str) 
 
 pub fn auth_register_fail(meta: &RequestMeta, username: &str, reason: &str) {
     tracing::warn!(
-        event = "auth.register.fail",
+        event = "auth.register",
+        outcome = "fail",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username,
@@ -87,10 +97,12 @@ pub fn auth_register_fail(meta: &RequestMeta, username: &str, reason: &str) {
 
 pub fn auth_login_success(meta: &RequestMeta, username: &str) {
     tracing::info!(
-        event = "auth.login.success",
+        event = "auth.login",
+        outcome = "success",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username
@@ -99,10 +111,12 @@ pub fn auth_login_success(meta: &RequestMeta, username: &str) {
 
 pub fn auth_login_fail(meta: &RequestMeta, username: &str, reason: &str) {
     tracing::warn!(
-        event = "auth.login.fail",
+        event = "auth.login",
+        outcome = "fail",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username,
@@ -112,21 +126,25 @@ pub fn auth_login_fail(meta: &RequestMeta, username: &str, reason: &str) {
 
 pub fn auth_refresh_success(meta: &RequestMeta) {
     tracing::info!(
-        event = "auth.refresh.success",
+        event = "auth.refresh",
+        outcome = "success",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
-        ua = %meta.user_agent
+        ua = %meta.user_agent,
     );
 }
 
 pub fn auth_refresh_fail(meta: &RequestMeta, reason: &str) {
     tracing::warn!(
-        event = "auth.refresh.fail",
+        event = "auth.refresh",
+        outcome = "fail",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent,
         reason = %reason
@@ -135,21 +153,25 @@ pub fn auth_refresh_fail(meta: &RequestMeta, reason: &str) {
 
 pub fn auth_logout_success(meta: &RequestMeta) {
     tracing::info!(
-        event = "auth.logout.success",
+        event = "auth.logout",
+        outcome = "success",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
-        ua = %meta.user_agent
+        ua = %meta.user_agent,
     );
 }
 
 pub fn auth_logout_fail(meta: &RequestMeta, reason: &str) {
     tracing::warn!(
-        event = "auth.logout.fail",
+        event = "auth.logout",
+        outcome = "fail",
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent,
         reason = %reason
@@ -162,6 +184,7 @@ pub fn auth_csrf_issue(meta: &RequestMeta) {
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent
     );
@@ -173,6 +196,7 @@ pub fn auth_lockout_triggered(meta: &RequestMeta, username: &str, user_id: &str)
         method = ?meta.method,
         path = %meta.path,
         request_id = %meta.request_id,
+        is_web = %meta.is_web,
         ip = %meta.ip,
         ua = %meta.user_agent,
         username = %username,
