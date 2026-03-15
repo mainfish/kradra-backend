@@ -5,6 +5,11 @@ pub struct AdminUpdateUserRoleRequest {
     pub role: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminUpdateUserActiveRequest {
+    pub is_active: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AdminUserResponse {
     pub user: AdminUserDto,

@@ -16,4 +16,8 @@ pub fn router() -> Router<AppState> {
             "/api/admin/users/{id}/role",
             patch(handlers::update_user_role),
         )
+        .route(
+            "/api/admin/users/{id}/active",
+            patch(handlers::update_user_active),
+        )
 }

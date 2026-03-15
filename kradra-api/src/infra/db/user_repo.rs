@@ -295,6 +295,27 @@ impl UserRepo for PgUserRepo {
         Ok(())
     }
 
+    async fn set_active_by_id(&self, user_id: &str, is_active: bool) -> Result<(), AuthError> {
+        let result = sqlx::query(
+            r#"
+            UPDATE users
+            SET is_active = $2
+            WHERE id = ($1)::uuid
+            "#,
+        )
+        .bind(user_id)
+        .bind(is_active)
+        .execute(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        if result.rows_affected() == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+
+        Ok(())
+    }
+
     async fn create_user(
         &self,
         username: &str,
