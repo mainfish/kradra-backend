@@ -7,5 +7,5 @@ use super::handlers;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/admin/ping", get(handlers::ping))
-        .route("/api/admin/users", get(handlers::users_list))
+        .route("/api/admin/users", get(handlers::list_users))
 }

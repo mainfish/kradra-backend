@@ -1,6 +1,6 @@
 use axum::{Json, extract::State};
 
-use kradra_core::auth::models::AuthUser;
+use kradra_core::auth::{models::AuthUser, ports::UserRepo};
 
 use super::dto::{AdminUserDto, AdminUsersResponse};
 
@@ -11,8 +11,7 @@ pub async fn ping(user: AuthUser) -> Result<Json<serde_json::Value>, crate::erro
 
     Ok(Json(serde_json::json!({ "message": "admin pong" })))
 }
-
-pub async fn users_list(
+pub async fn list_users(
     State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Json<AdminUsersResponse>, AppError> {
@@ -21,7 +20,7 @@ pub async fn users_list(
     let users = state
         .db_adapters
         .user_repo
-        .users_list()
+        .list_users()
         .await?
         .into_iter()
         .map(|user| AdminUserDto {

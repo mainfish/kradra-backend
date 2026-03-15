@@ -159,44 +159,6 @@ impl PgUserRepo {
 
         Ok(result.rows_affected())
     }
-
-    pub async fn users_list(&self) -> Result<Vec<User>, AuthError> {
-        let rows = sqlx::query(
-            r#"
-            SELECT id::text as id, username, password_hash, role, is_active, created_at::text as created_at
-            FROM users
-            ORDER BY created_at DESC
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await
-        .map_err(|_| AuthError::Internal)?;
-
-        let mut users = Vec::with_capacity(rows.len());
-
-        for row in rows {
-            let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
-            let username: String = row.try_get("username").map_err(|_| AuthError::Internal)?;
-            let password_hash: String = row
-                .try_get("password_hash")
-                .map_err(|_| AuthError::Internal)?;
-            let role_str: String = row.try_get("role").map_err(|_| AuthError::Internal)?;
-            let role = Role::try_from(role_str.as_str()).map_err(|_| AuthError::Internal)?;
-            let is_active: bool = row.try_get("is_active").map_err(|_| AuthError::Internal)?;
-            let created_at: String = row.try_get("created_at").map_err(|_| AuthError::Internal)?;
-
-            users.push(User {
-                id,
-                username,
-                password_hash,
-                role,
-                is_active,
-                created_at,
-            });
-        }
-
-        Ok(users)
-    }
 }
 
 impl UserRepo for PgUserRepo {
@@ -272,6 +234,44 @@ impl UserRepo for PgUserRepo {
             is_active,
             created_at,
         })
+    }
+
+    async fn list_users(&self) -> Result<Vec<User>, AuthError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id::text as id, username, password_hash, role, is_active, created_at::text as created_at
+            FROM users
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        let mut users = Vec::with_capacity(rows.len());
+
+        for row in rows {
+            let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
+            let username: String = row.try_get("username").map_err(|_| AuthError::Internal)?;
+            let password_hash: String = row
+                .try_get("password_hash")
+                .map_err(|_| AuthError::Internal)?;
+            let role_str: String = row.try_get("role").map_err(|_| AuthError::Internal)?;
+            let role = Role::try_from(role_str.as_str()).map_err(|_| AuthError::Internal)?;
+            let is_active: bool = row.try_get("is_active").map_err(|_| AuthError::Internal)?;
+            let created_at: String = row.try_get("created_at").map_err(|_| AuthError::Internal)?;
+
+            users.push(User {
+                id,
+                username,
+                password_hash,
+                role,
+                is_active,
+                created_at,
+            });
+        }
+
+        Ok(users)
     }
 
     async fn create_user(
