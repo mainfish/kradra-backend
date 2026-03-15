@@ -10,6 +10,11 @@ pub struct AdminUserDto {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AdminUserResponse {
+    pub user: AdminUserDto,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct AdminUsersResponse {
     pub users: Vec<AdminUserDto>,
 }
