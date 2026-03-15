@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    routing::{get, patch},
+    routing::{get, patch, post},
 };
 
 use crate::state::AppState;
@@ -19,5 +19,9 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/admin/users/{id}/active",
             patch(handlers::update_user_active),
+        )
+        .route(
+            "/api/admin/users/{id}/logout-all",
+            post(handlers::logout_all_user_sessions),
         )
 }

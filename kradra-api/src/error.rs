@@ -70,7 +70,7 @@ impl From<AuthError> for AppError {
         match err {
             AuthError::InvalidCredentials => AppError::Unauthorized,
             AuthError::InvalidRefreshToken => AppError::Unauthorized,
-            AuthError::UserNotFound => AppError::Unauthorized,
+            AuthError::UserNotFound => AppError::NotFound,
             AuthError::BadRequest(msg) => AppError::BadRequest(msg),
             AuthError::UserAlreadyExists => AppError::Conflict(err.to_string()),
             AuthError::Unauthorized => AppError::Unauthorized,

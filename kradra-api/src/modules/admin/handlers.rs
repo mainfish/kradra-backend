@@ -5,7 +5,7 @@ use axum::{
 
 use kradra_core::auth::{
     models::{AuthUser, Role},
-    ports::UserRepo,
+    ports::{RefreshTokenStore, UserRepo},
 };
 
 use super::dto::{
@@ -119,4 +119,22 @@ pub async fn update_user_active(
             created_at: user.created_at,
         },
     }))
+}
+
+pub async fn logout_all_user_sessions(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    user: AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin(&user)?;
+
+    state.db_adapters.user_repo.find_by_id(&user_id).await?;
+
+    state
+        .db_adapters
+        .refresh_token_store
+        .revoke_all_active_for_user(&user_id)
+        .await?;
+
+    Ok(Json(serde_json::json!({})))
 }
