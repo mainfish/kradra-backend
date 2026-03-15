@@ -15,6 +15,7 @@ pub async fn register(
     if username.is_empty() {
         return Err(AuthError::BadRequest("username is required".to_string()));
     }
+
     if password.len() < 8 {
         return Err(AuthError::BadRequest(
             "password must be at least 8 characters".to_string(),

@@ -146,10 +146,10 @@ impl PgUserRepo {
     pub async fn set_role_by_username(&self, username: &str, role: &str) -> Result<u64, AuthError> {
         let result = sqlx::query(
             r#"
-        UPDATE users
-        SET role = $2
-        WHERE username = $1
-        "#,
+            UPDATE users
+            SET role = $2
+            WHERE username = $1
+            "#,
         )
         .bind(username)
         .bind(role)
@@ -158,6 +158,44 @@ impl PgUserRepo {
         .map_err(|_| AuthError::Internal)?;
 
         Ok(result.rows_affected())
+    }
+
+    pub async fn users_list(&self) -> Result<Vec<User>, AuthError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id::text as id, username, password_hash, role, is_active, created_at::text as created_at
+            FROM users
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        let mut users = Vec::with_capacity(rows.len());
+
+        for row in rows {
+            let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
+            let username: String = row.try_get("username").map_err(|_| AuthError::Internal)?;
+            let password_hash: String = row
+                .try_get("password_hash")
+                .map_err(|_| AuthError::Internal)?;
+            let role_str: String = row.try_get("role").map_err(|_| AuthError::Internal)?;
+            let role = Role::try_from(role_str.as_str()).map_err(|_| AuthError::Internal)?;
+            let is_active: bool = row.try_get("is_active").map_err(|_| AuthError::Internal)?;
+            let created_at: String = row.try_get("created_at").map_err(|_| AuthError::Internal)?;
+
+            users.push(User {
+                id,
+                username,
+                password_hash,
+                role,
+                is_active,
+                created_at,
+            });
+        }
+
+        Ok(users)
     }
 }
 
