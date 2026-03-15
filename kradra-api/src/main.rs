@@ -1,22 +1,14 @@
 use std::{env, error::Error, net::SocketAddr};
 
-mod error;
-mod http;
-mod infra;
-mod modules;
-mod state;
-
-use crate::infra::telemetry;
+use kradra_api::{AppState, build_router, infra::telemetry};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     dotenvy::dotenv().ok();
     telemetry::logging::init();
 
-    let app_state = state::AppState::from_env()
-        .await
-        .expect("failed to init AppState");
-    let app = http::build_router(app_state);
+    let app_state = AppState::from_env().await.expect("failed to init AppState");
+    let app = build_router(app_state);
 
     let addr: SocketAddr = env::var("BIND_ADDR")
         .unwrap_or_else(|_| "127.0.0.1:20443".to_string())
