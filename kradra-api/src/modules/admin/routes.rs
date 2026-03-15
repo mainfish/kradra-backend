@@ -1,4 +1,7 @@
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    routing::{get, patch},
+};
 
 use crate::state::AppState;
 
@@ -9,4 +12,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/admin/ping", get(handlers::ping))
         .route("/api/admin/users", get(handlers::list_users))
         .route("/api/admin/users/{id}", get(handlers::get_user))
+        .route(
+            "/api/admin/users/{id}/role",
+            patch(handlers::update_user_role),
+        )
 }

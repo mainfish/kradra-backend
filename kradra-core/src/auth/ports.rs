@@ -8,7 +8,7 @@ pub trait UserRepo: Send + Sync {
     async fn find_by_username(&self, username: &str) -> Result<User, AuthError>;
     async fn find_by_id(&self, user_id: &str) -> Result<User, AuthError>;
     async fn list_users(&self) -> Result<Vec<User>, AuthError>;
-
+    async fn set_role_by_id(&self, user_id: &str, role: Role) -> Result<(), AuthError>;
     async fn create_user(&self, username: &str, password_hash: &str)
     -> Result<AuthUser, AuthError>;
 }

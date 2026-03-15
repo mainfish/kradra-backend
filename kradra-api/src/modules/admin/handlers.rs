@@ -3,9 +3,12 @@ use axum::{
     extract::{Path, State},
 };
 
-use kradra_core::auth::{models::AuthUser, ports::UserRepo};
+use kradra_core::auth::{
+    models::{AuthUser, Role},
+    ports::UserRepo,
+};
 
-use super::dto::{AdminUserDto, AdminUserResponse, AdminUsersResponse};
+use super::dto::{AdminUpdateUserRoleRequest, AdminUserDto, AdminUserResponse, AdminUsersResponse};
 
 use crate::{error::AppError, http::extractors::auth_user::require_admin, state::AppState};
 
@@ -44,6 +47,36 @@ pub async fn get_user(
     user: AuthUser,
 ) -> Result<Json<AdminUserResponse>, AppError> {
     require_admin(&user)?;
+
+    let user = state.db_adapters.user_repo.find_by_id(&user_id).await?;
+
+    Ok(Json(AdminUserResponse {
+        user: AdminUserDto {
+            id: user.id,
+            username: user.username,
+            role: user.role.to_string(),
+            is_active: user.is_active,
+            created_at: user.created_at,
+        },
+    }))
+}
+
+pub async fn update_user_role(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    user: AuthUser,
+    Json(req): Json<AdminUpdateUserRoleRequest>,
+) -> Result<Json<AdminUserResponse>, AppError> {
+    require_admin(&user)?;
+
+    let role =
+        Role::try_from(req.role.as_str()).map_err(|_| AppError::bad_request("invalid role"))?;
+
+    state
+        .db_adapters
+        .user_repo
+        .set_role_by_id(&user_id, role)
+        .await?;
 
     let user = state.db_adapters.user_repo.find_by_id(&user_id).await?;
 

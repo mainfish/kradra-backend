@@ -274,6 +274,27 @@ impl UserRepo for PgUserRepo {
         Ok(users)
     }
 
+    async fn set_role_by_id(&self, user_id: &str, role: Role) -> Result<(), AuthError> {
+        let result = sqlx::query(
+            r#"
+            UPDATE users
+            SET role = $2
+            WHERE id = ($1)::uuid
+            "#,
+        )
+        .bind(user_id)
+        .bind(role.to_string())
+        .execute(&self.db)
+        .await
+        .map_err(|_| AuthError::Internal)?;
+
+        if result.rows_affected() == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+
+        Ok(())
+    }
+
     async fn create_user(
         &self,
         username: &str,
