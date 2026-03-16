@@ -1,109 +1,13 @@
+mod auth_test_helpers;
 mod test_app;
 
-use reqwest::header::SET_COOKIE;
 use serde_json::json;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use test_app::{TestApp, spawn_app};
-
-fn unique_username(prefix: &str) -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_nanos();
-
-    format!("{}_{}", prefix, nanos)
-}
-
-fn cookie_value_from_headers(headers: &reqwest::header::HeaderMap, name: &str) -> String {
-    headers
-        .get_all(SET_COOKIE)
-        .iter()
-        .filter_map(|value| value.to_str().ok())
-        .find_map(|raw| {
-            raw.split(';')
-                .next()
-                .and_then(|first| first.split_once('='))
-                .and_then(|(cookie_name, cookie_value)| {
-                    if cookie_name == name {
-                        Some(cookie_value.to_string())
-                    } else {
-                        None
-                    }
-                })
-        })
-        .unwrap_or_else(|| panic!("missing cookie {}", name))
-}
-
-async fn register_user(app: &TestApp, username: &str, password: &str) -> serde_json::Value {
-    let response = app
-        .client
-        .post(app.url("/api/auth/register"))
-        .json(&json!({
-            "username": username,
-            "password": password
-        }))
-        .send()
-        .await
-        .expect("register request failed");
-
-    assert_eq!(
-        response.status().as_u16(),
-        200,
-        "unexpected register status"
-    );
-
-    response
-        .json::<serde_json::Value>()
-        .await
-        .expect("failed to parse register response")
-}
-
-async fn login_user(app: &TestApp, username: &str, password: &str) -> serde_json::Value {
-    let response = app
-        .client
-        .post(app.url("/api/auth/login"))
-        .json(&json!({
-            "username": username,
-            "password": password
-        }))
-        .send()
-        .await
-        .expect("login request failed");
-
-    assert_eq!(response.status().as_u16(), 200, "unexpected login status");
-
-    response
-        .json::<serde_json::Value>()
-        .await
-        .expect("failed to parse login response")
-}
-
-async fn promote_to_admin(username: &str) {
-    let database_url = std::env::var("DATABASE_URL_TEST").expect("DATABASE_URL_TEST is not set");
-
-    let pool = sqlx::PgPool::connect(&database_url)
-        .await
-        .expect("failed to connect to test database");
-
-    let result = sqlx::query(
-        r#"
-        UPDATE users
-        SET role = 'admin'
-        WHERE username = $1
-        "#,
-    )
-    .bind(username)
-    .execute(&pool)
-    .await
-    .expect("failed to promote user to admin");
-
-    assert_eq!(
-        result.rows_affected(),
-        1,
-        "expected exactly one updated user"
-    );
-}
+use auth_test_helpers::cookie_value_from_headers;
+use test_app::{
+    get_user_id_by_username, login_user, promote_to_admin, register_user, spawn_app,
+    unique_username,
+};
 
 #[tokio::test]
 async fn register_success_returns_200() {
@@ -559,29 +463,7 @@ async fn deactivated_user_cannot_login() {
         .as_str()
         .expect("missing access_token");
 
-    let users_response = app
-        .client
-        .get(app.url("/api/admin/users"))
-        .bearer_auth(admin_access_token)
-        .send()
-        .await
-        .expect("request failed");
-
-    assert_eq!(users_response.status().as_u16(), 200);
-
-    let users_body = users_response
-        .json::<serde_json::Value>()
-        .await
-        .expect("failed to parse users response");
-
-    let user_id = users_body["users"]
-        .as_array()
-        .expect("users must be array")
-        .iter()
-        .find(|user| user["username"] == username)
-        .and_then(|user| user["id"].as_str())
-        .expect("failed to find created user id")
-        .to_string();
+    let user_id = get_user_id_by_username(&app, admin_access_token, &username).await;
 
     let deactivate_response = app
         .client
