@@ -79,6 +79,32 @@ async fn login_user(app: &TestApp, username: &str, password: &str) -> serde_json
         .expect("failed to parse login response")
 }
 
+async fn promote_to_admin(username: &str) {
+    let database_url = std::env::var("DATABASE_URL_TEST").expect("DATABASE_URL_TEST is not set");
+
+    let pool = sqlx::PgPool::connect(&database_url)
+        .await
+        .expect("failed to connect to test database");
+
+    let result = sqlx::query(
+        r#"
+        UPDATE users
+        SET role = 'admin'
+        WHERE username = $1
+        "#,
+    )
+    .bind(username)
+    .execute(&pool)
+    .await
+    .expect("failed to promote user to admin");
+
+    assert_eq!(
+        result.rows_affected(),
+        1,
+        "expected exactly one updated user"
+    );
+}
+
 #[tokio::test]
 async fn register_success_returns_200() {
     let app = spawn_app().await;
@@ -513,4 +539,160 @@ async fn logout_then_cookie_refresh_returns_403() {
         .expect("refresh request failed");
 
     assert_eq!(refresh_response.status().as_u16(), 403);
+}
+
+#[tokio::test]
+async fn deactivated_user_cannot_login() {
+    let app = spawn_app().await;
+
+    let username = unique_username("alice");
+    let password = "password123";
+    register_user(&app, &username, password).await;
+
+    let admin_username = unique_username("bulka");
+    let admin_password = "bulkagus";
+    register_user(&app, &admin_username, admin_password).await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, admin_password).await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let users_response = app
+        .client
+        .get(app.url("/api/admin/users"))
+        .bearer_auth(admin_access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(users_response.status().as_u16(), 200);
+
+    let users_body = users_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse users response");
+
+    let user_id = users_body["users"]
+        .as_array()
+        .expect("users must be array")
+        .iter()
+        .find(|user| user["username"] == username)
+        .and_then(|user| user["id"].as_str())
+        .expect("failed to find created user id")
+        .to_string();
+
+    let deactivate_response = app
+        .client
+        .patch(app.url(&format!("/api/admin/users/{}/active", user_id)))
+        .bearer_auth(admin_access_token)
+        .json(&json!({ "is_active": false }))
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(deactivate_response.status().as_u16(), 200);
+
+    let login_response = app
+        .client
+        .post(app.url("/api/auth/login"))
+        .json(&json!({
+            "username": username,
+            "password": password
+        }))
+        .send()
+        .await
+        .expect("login request failed");
+
+    assert_eq!(login_response.status().as_u16(), 403);
+}
+
+#[tokio::test]
+async fn lockout_after_repeated_failures() {
+    let app = spawn_app().await;
+
+    let max_failures: usize = std::env::var("AUTH_LOCKOUT_MAX_FAILURES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(10);
+
+    let username = unique_username("alice");
+    let password = "password123";
+    register_user(&app, &username, password).await;
+
+    for _ in 0..max_failures {
+        let response = app
+            .client
+            .post(app.url("/api/auth/login"))
+            .json(&json!({
+                "username": username,
+                "password": "wrongpass"
+            }))
+            .send()
+            .await
+            .expect("login request failed");
+
+        assert_eq!(response.status().as_u16(), 401);
+    }
+
+    let locked_response = app
+        .client
+        .post(app.url("/api/auth/login"))
+        .json(&json!({
+            "username": username,
+            "password": password
+        }))
+        .send()
+        .await
+        .expect("login request failed");
+
+    assert_eq!(locked_response.status().as_u16(), 423);
+
+    let body = locked_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse locked response");
+
+    assert_eq!(body["error"]["code"], "locked");
+}
+
+#[tokio::test]
+async fn rate_limit_returns_429() {
+    let app = spawn_app().await;
+
+    let max_requests: usize = std::env::var("AUTH_RATE_LIMIT_MAX")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(10);
+
+    let username = unique_username("alice");
+
+    for _ in 0..max_requests {
+        let response = app
+            .client
+            .post(app.url("/api/auth/register"))
+            .json(&json!({
+                "username": username,
+                "password": "123"
+            }))
+            .send()
+            .await
+            .expect("register request failed");
+
+        assert_eq!(response.status().as_u16(), 400);
+    }
+
+    let limited_response = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&json!({
+            "username": username,
+            "password": "123"
+        }))
+        .send()
+        .await
+        .expect("register request failed");
+
+    assert_eq!(limited_response.status().as_u16(), 429);
 }
