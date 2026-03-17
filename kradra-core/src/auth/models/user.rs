@@ -41,8 +41,8 @@ pub struct User {
 pub struct UserSession {
     pub id: String,
     pub user_id: String,
-    pub ip: Option<String>,
-    pub user_agent: Option<String>,
+    pub ip: String,
+    pub user_agent: String,
     pub is_revoked: bool,
     pub is_replaced: bool,
     pub expires_unix: i64,

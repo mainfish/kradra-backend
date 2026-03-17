@@ -32,8 +32,8 @@ pub struct AdminUserDto {
 #[derive(Debug, Clone, Serialize)]
 pub struct AdminUserSessionDto {
     pub id: String,
-    pub ip: Option<String>,
-    pub user_agent: Option<String>,
+    pub ip: String,
+    pub user_agent: String,
     pub is_revoked: bool,
     pub is_replaced: bool,
     pub expires_unix: i64,

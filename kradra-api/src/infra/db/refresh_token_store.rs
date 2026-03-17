@@ -53,8 +53,8 @@ impl RefreshTokenStore for PgRefreshTokenStore {
             SELECT
             id::text as id,
             user_id::text as user_id,
-            ip,
-            user_agent,
+            COALESCE(ip, 'unknown') as ip,
+            COALESCE(user_agent, 'unknown') as user_agent,
             revoked_at IS NOT NULL as is_revoked,
             replaced_by IS NOT NULL as is_replaced,
             (extract(epoch from expires_at))::bigint as expires_unix
@@ -73,9 +73,8 @@ impl RefreshTokenStore for PgRefreshTokenStore {
 
         let id: String = row.try_get("id").map_err(|_| AuthError::Internal)?;
         let user_id: String = row.try_get("user_id").map_err(|_| AuthError::Internal)?;
-        let ip: Option<String> = row.try_get("ip").map_err(|_| AuthError::Internal)?;
-        let user_agent: Option<String> =
-            row.try_get("user_agent").map_err(|_| AuthError::Internal)?;
+        let ip: String = row.try_get("ip").map_err(|_| AuthError::Internal)?;
+        let user_agent: String = row.try_get("user_agent").map_err(|_| AuthError::Internal)?;
         let is_revoked: bool = row.try_get("is_revoked").map_err(|_| AuthError::Internal)?;
         let is_replaced: bool = row
             .try_get("is_replaced")
@@ -107,18 +106,18 @@ impl RefreshTokenStore for PgRefreshTokenStore {
 
         let row = sqlx::query(
             r#"
-            SELECT
+        SELECT
             id::text as id,
             user_id::text as user_id,
-            ip,
-            user_agent,
+            COALESCE(ip, 'unknown') as ip,
+            COALESCE(user_agent, 'unknown') as user_agent,
             revoked_at IS NOT NULL as is_revoked,
             replaced_by IS NOT NULL as is_replaced,
             (extract(epoch from expires_at))::bigint as expires_unix
-            FROM refresh_tokens
-            WHERE token_hash = $1
-            FOR UPDATE
-            "#,
+        FROM refresh_tokens
+        WHERE token_hash = $1
+        FOR UPDATE
+        "#,
         )
         .bind(old_token_hash)
         .fetch_optional(&mut *tx)
@@ -158,10 +157,10 @@ impl RefreshTokenStore for PgRefreshTokenStore {
 
         let new_row = sqlx::query(
             r#"
-            INSERT INTO refresh_tokens (user_id, token_hash, expires_at, ip, user_agent)
-            VALUES (($1)::uuid, $2, to_timestamp($3), $4, $5)
-            RETURNING id::text as id
-            "#,
+        INSERT INTO refresh_tokens (user_id, token_hash, expires_at, ip, user_agent)
+        VALUES (($1)::uuid, $2, to_timestamp($3), $4, $5)
+        RETURNING id::text as id
+        "#,
         )
         .bind(&current.user_id)
         .bind(new_token_hash)
@@ -176,10 +175,10 @@ impl RefreshTokenStore for PgRefreshTokenStore {
 
         sqlx::query(
             r#"
-            UPDATE refresh_tokens
-            SET revoked_at = now(), replaced_by = ($2)::uuid
-            WHERE id = ($1)::uuid
-            "#,
+        UPDATE refresh_tokens
+        SET revoked_at = now(), replaced_by = ($2)::uuid
+        WHERE id = ($1)::uuid
+        "#,
         )
         .bind(&current.id)
         .bind(&new_id)
@@ -192,8 +191,8 @@ impl RefreshTokenStore for PgRefreshTokenStore {
         Ok(UserSession {
             id: new_id,
             user_id: current.user_id,
-            ip: Some(ip.to_string()),
-            user_agent: user_agent.map(str::to_string),
+            ip: ip.to_string(),
+            user_agent: user_agent.unwrap_or("unknown").to_string(),
             is_revoked: false,
             is_replaced: false,
             expires_unix,
@@ -237,18 +236,18 @@ impl RefreshTokenStore for PgRefreshTokenStore {
     async fn list_sessions_for_user(&self, user_id: &str) -> Result<Vec<UserSession>, AuthError> {
         let rows = sqlx::query(
             r#"
-            SELECT
+        SELECT
             id::text as id,
             user_id::text as user_id,
-            ip,
-            user_agent,
+            COALESCE(ip, 'unknown') as ip,
+            COALESCE(user_agent, 'unknown') as user_agent,
             revoked_at IS NOT NULL as is_revoked,
             replaced_by IS NOT NULL as is_replaced,
             (extract(epoch from expires_at))::bigint as expires_unix
-            FROM refresh_tokens
-            WHERE user_id = ($1)::uuid
-            ORDER BY created_at DESC
-            "#,
+        FROM refresh_tokens
+        WHERE user_id = ($1)::uuid
+        ORDER BY created_at DESC
+        "#,
         )
         .bind(user_id)
         .fetch_all(&self.db)
