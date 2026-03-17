@@ -13,6 +13,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/admin/users", get(handlers::list_users))
         .route("/api/admin/users/{id}", get(handlers::get_user))
         .route(
+            "/api/admin/users/{id}/sessions",
+            get(handlers::get_user_sessions),
+        )
+        .route(
             "/api/admin/users/{id}/role",
             patch(handlers::update_user_role),
         )

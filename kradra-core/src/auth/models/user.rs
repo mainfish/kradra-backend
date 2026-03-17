@@ -38,6 +38,17 @@ pub struct User {
 }
 
 #[derive(Debug, Clone)]
+pub struct UserSession {
+    pub id: String,
+    pub user_id: String,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    pub is_revoked: bool,
+    pub is_replaced: bool,
+    pub expires_unix: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct AuthUser {
     pub id: String,
     pub username: String,

@@ -10,7 +10,7 @@ use kradra_core::auth::{
 
 use super::dto::{
     AdminUpdateUserActiveRequest, AdminUpdateUserRoleRequest, AdminUserDto, AdminUserResponse,
-    AdminUsersResponse,
+    AdminUserSessionDto, AdminUserSessionsResponse, AdminUsersResponse,
 };
 
 use crate::{error::AppError, http::extractors::auth_user::require_admin, state::AppState};
@@ -119,6 +119,34 @@ pub async fn update_user_active(
             created_at: user.created_at,
         },
     }))
+}
+
+pub async fn get_user_sessions(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    user: AuthUser,
+) -> Result<Json<AdminUserSessionsResponse>, AppError> {
+    require_admin(&user)?;
+
+    state.db_adapters.user_repo.find_by_id(&user_id).await?;
+
+    let sessions = state
+        .db_adapters
+        .refresh_token_store
+        .list_sessions_for_user(&user_id)
+        .await?
+        .into_iter()
+        .map(|session| AdminUserSessionDto {
+            id: session.id,
+            ip: session.ip,
+            user_agent: session.user_agent,
+            is_revoked: session.is_revoked,
+            is_replaced: session.is_replaced,
+            expires_unix: session.expires_unix,
+        })
+        .collect();
+
+    Ok(Json(AdminUserSessionsResponse { sessions }))
 }
 
 pub async fn logout_all_user_sessions(

@@ -1,7 +1,7 @@
 #![allow(async_fn_in_trait)]
 use super::{
     errors::AuthError,
-    models::{AuthUser, RefreshTokenRecord, Role, User},
+    models::{AuthUser, Role, User, UserSession},
 };
 
 pub trait UserRepo: Send + Sync {
@@ -30,7 +30,7 @@ pub trait RefreshTokenCodec: Send + Sync {
 }
 
 pub trait RefreshTokenStore: Send + Sync {
-    async fn get_by_hash(&self, token_hash: &str) -> Result<RefreshTokenRecord, AuthError>;
+    async fn get_by_hash(&self, token_hash: &str) -> Result<UserSession, AuthError>;
 
     async fn insert_refresh_returning_id(
         &self,
@@ -48,8 +48,9 @@ pub trait RefreshTokenStore: Send + Sync {
         expires_unix: i64,
         ip: &str,
         user_agent: Option<&str>,
-    ) -> Result<RefreshTokenRecord, AuthError>;
+    ) -> Result<UserSession, AuthError>;
 
     async fn revoke_by_hash(&self, token_hash: &str) -> Result<(), AuthError>;
     async fn revoke_all_active_for_user(&self, user_id: &str) -> Result<(), AuthError>;
+    async fn list_sessions_for_user(&self, user_id: &str) -> Result<Vec<UserSession>, AuthError>;
 }
