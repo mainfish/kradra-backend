@@ -475,3 +475,177 @@ async fn logout_all_for_missing_user_returns_404() {
 
     assert_eq!(response.status().as_u16(), 404);
 }
+
+#[tokio::test]
+async fn admin_user_sessions_without_token_returns_401() {
+    let app = spawn_app().await;
+
+    let username = unique_username("alice");
+    let password = "password123";
+    register_user(&app, &username, password).await;
+
+    let admin_username = unique_username("bulka");
+    register_user(&app, &admin_username, "bulkagus").await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, "bulkagus").await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let user_id = get_user_id_by_username(&app, admin_access_token, &username).await;
+
+    let response = app
+        .client
+        .get(app.url(&format!("/api/admin/users/{}/sessions", user_id)))
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn admin_user_sessions_with_non_admin_returns_403() {
+    let app = spawn_app().await;
+
+    let username = unique_username("alice");
+    let password = "password123";
+    register_user(&app, &username, password).await;
+
+    let login = login_user(&app, &username, password).await;
+    let access_token = login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let response = app
+        .client
+        .get(app.url("/api/admin/users/00000000-0000-0000-0000-000000000000/sessions"))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 403);
+}
+
+#[tokio::test]
+async fn admin_user_sessions_for_missing_user_returns_404() {
+    let app = spawn_app().await;
+
+    let admin_username = unique_username("bulka");
+    register_user(&app, &admin_username, "bulkagus").await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, "bulkagus").await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let response = app
+        .client
+        .get(app.url("/api/admin/users/00000000-0000-0000-0000-000000000000/sessions"))
+        .bearer_auth(admin_access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn admin_user_sessions_with_admin_returns_200() {
+    let app = spawn_app().await;
+
+    let username = unique_username("alice");
+    let password = "password123";
+    register_user(&app, &username, password).await;
+
+    let _user_login = login_user(&app, &username, password).await;
+
+    let admin_username = unique_username("bulka");
+    register_user(&app, &admin_username, "bulkagus").await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, "bulkagus").await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let user_id = get_user_id_by_username(&app, admin_access_token, &username).await;
+
+    let response = app
+        .client
+        .get(app.url(&format!("/api/admin/users/{}/sessions", user_id)))
+        .bearer_auth(admin_access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 200);
+
+    let body = response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse response body");
+
+    assert!(body["sessions"].is_array(), "sessions must be an array");
+}
+
+#[tokio::test]
+async fn admin_user_sessions_contains_created_session() {
+    let app = spawn_app().await;
+
+    let username = unique_username("alice");
+    let password = "password123";
+    register_user(&app, &username, password).await;
+
+    let _user_login = login_user(&app, &username, password).await;
+
+    let admin_username = unique_username("bulka");
+    register_user(&app, &admin_username, "bulkagus").await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, "bulkagus").await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let user_id = get_user_id_by_username(&app, admin_access_token, &username).await;
+
+    let response = app
+        .client
+        .get(app.url(&format!("/api/admin/users/{}/sessions", user_id)))
+        .bearer_auth(admin_access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 200);
+
+    let body = response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse response body");
+
+    let sessions = body["sessions"]
+        .as_array()
+        .expect("sessions must be an array");
+
+    assert!(!sessions.is_empty(), "sessions array should not be empty");
+
+    let first = &sessions[0];
+    assert!(first["id"].is_string());
+    assert!(first["expires_unix"].is_number());
+    assert!(first["is_revoked"].is_boolean());
+    assert!(first["is_replaced"].is_boolean());
+
+    assert!(
+        first["ip"].is_string() || first["ip"].is_null(),
+        "ip must be string or null"
+    );
+    assert!(
+        first["user_agent"].is_string() || first["user_agent"].is_null(),
+        "user_agent must be string or null"
+    );
+}
