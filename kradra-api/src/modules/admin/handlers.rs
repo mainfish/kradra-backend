@@ -5,10 +5,11 @@ use axum::{
 
 use kradra_core::auth::{
     models::{AuthUser, Role},
-    ports::{RefreshTokenStore, UserRepo},
+    ports::{AppSettingsStore, RefreshTokenStore, UserRepo},
 };
 
 use super::dto::{
+    AdminRegistrationSettingsResponse, AdminUpdateRegistrationSettingsRequest,
     AdminUpdateUserActiveRequest, AdminUpdateUserRoleRequest, AdminUserDto, AdminUserResponse,
     AdminUserSessionDto, AdminUserSessionsResponse, AdminUsersResponse,
 };
@@ -165,4 +166,41 @@ pub async fn logout_all_user_sessions(
         .await?;
 
     Ok(Json(serde_json::json!({})))
+}
+
+pub async fn get_registration_settings(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<AdminRegistrationSettingsResponse>, AppError> {
+    require_admin(&user)?;
+
+    let registration_enabled = state
+        .db_adapters
+        .app_settings_store
+        .get_registration_enabled()
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(AdminRegistrationSettingsResponse {
+        registration_enabled,
+    }))
+}
+
+pub async fn update_registration_settings(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(req): Json<AdminUpdateRegistrationSettingsRequest>,
+) -> Result<Json<AdminRegistrationSettingsResponse>, AppError> {
+    require_admin(&user)?;
+
+    state
+        .db_adapters
+        .app_settings_store
+        .set_registration_enabled(req.registration_enabled)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(AdminRegistrationSettingsResponse {
+        registration_enabled: req.registration_enabled,
+    }))
 }

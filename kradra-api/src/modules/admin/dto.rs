@@ -43,3 +43,13 @@ pub struct AdminUserSessionDto {
 pub struct AdminUserSessionsResponse {
     pub sessions: Vec<AdminUserSessionDto>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminRegistrationSettingsResponse {
+    pub registration_enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminUpdateRegistrationSettingsRequest {
+    pub registration_enabled: bool,
+}

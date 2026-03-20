@@ -28,4 +28,8 @@ pub fn router() -> Router<AppState> {
             "/api/admin/users/{id}/logout-all",
             post(handlers::logout_all_user_sessions),
         )
+        .route(
+            "/api/admin/settings/registration",
+            get(handlers::get_registration_settings).patch(handlers::update_registration_settings),
+        )
 }

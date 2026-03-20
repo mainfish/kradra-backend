@@ -649,3 +649,222 @@ async fn admin_user_sessions_contains_created_session() {
         "user_agent must be string or null"
     );
 }
+
+#[tokio::test]
+async fn admin_registration_settings_without_token_returns_401() {
+    let app = spawn_app().await;
+
+    let response = app
+        .client
+        .get(app.url("/api/admin/settings/registration"))
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn admin_registration_settings_with_non_admin_returns_403() {
+    let app = spawn_app().await;
+
+    let username = unique_username("alice");
+    register_user(&app, &username, "password123").await;
+
+    let login = login_user(&app, &username, "password123").await;
+    let access_token = login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let response = app
+        .client
+        .get(app.url("/api/admin/settings/registration"))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 403);
+}
+
+#[tokio::test]
+async fn admin_get_registration_settings_with_admin_returns_200() {
+    let app = spawn_app().await;
+
+    let admin_username = unique_username("bulka");
+    register_user(&app, &admin_username, "bulkagus").await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, "bulkagus").await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let response = app
+        .client
+        .get(app.url("/api/admin/settings/registration"))
+        .bearer_auth(admin_access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status().as_u16(), 200);
+
+    let body = response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse response body");
+
+    assert!(body["registration_enabled"].is_boolean());
+}
+
+#[tokio::test]
+async fn admin_can_disable_registration_and_block_register() {
+    let app = spawn_app().await;
+
+    let admin_username = unique_username("bulka");
+    register_user(&app, &admin_username, "bulkagus").await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, "bulkagus").await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let patch_response = app
+        .client
+        .patch(app.url("/api/admin/settings/registration"))
+        .bearer_auth(admin_access_token)
+        .json(&json!({ "registration_enabled": false }))
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(patch_response.status().as_u16(), 200);
+
+    let patch_body = patch_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse patch response");
+
+    assert_eq!(patch_body["registration_enabled"], false);
+
+    let get_response = app
+        .client
+        .get(app.url("/api/admin/settings/registration"))
+        .bearer_auth(admin_access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(get_response.status().as_u16(), 200);
+
+    let get_body = get_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse get response");
+
+    assert_eq!(get_body["registration_enabled"], false);
+
+    let blocked_username = unique_username("blocked_user");
+    let register_response = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&json!({
+            "username": blocked_username,
+            "password": "password123"
+        }))
+        .send()
+        .await
+        .expect("register request failed");
+
+    assert_eq!(register_response.status().as_u16(), 503);
+
+    let register_body = register_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse register response");
+
+    assert_eq!(register_body["error"]["code"], "service_unavailable");
+}
+
+#[tokio::test]
+async fn admin_can_reenable_registration_and_allow_register() {
+    let app = spawn_app().await;
+
+    let admin_username = unique_username("bulka");
+    register_user(&app, &admin_username, "bulkagus").await;
+    promote_to_admin(&admin_username).await;
+
+    let admin_login = login_user(&app, &admin_username, "bulkagus").await;
+    let admin_access_token = admin_login["access_token"]
+        .as_str()
+        .expect("missing access_token");
+
+    let disable_response = app
+        .client
+        .patch(app.url("/api/admin/settings/registration"))
+        .bearer_auth(admin_access_token)
+        .json(&json!({ "registration_enabled": false }))
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(disable_response.status().as_u16(), 200);
+
+    let enable_response = app
+        .client
+        .patch(app.url("/api/admin/settings/registration"))
+        .bearer_auth(admin_access_token)
+        .json(&json!({ "registration_enabled": true }))
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(enable_response.status().as_u16(), 200);
+
+    let enable_body = enable_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse enable response");
+
+    assert_eq!(enable_body["registration_enabled"], true);
+
+    let get_response = app
+        .client
+        .get(app.url("/api/admin/settings/registration"))
+        .bearer_auth(admin_access_token)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(get_response.status().as_u16(), 200);
+
+    let get_body = get_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse get response");
+
+    assert_eq!(get_body["registration_enabled"], true);
+
+    let allowed_username = unique_username("enabled_user");
+    let register_response = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&json!({
+            "username": allowed_username,
+            "password": "password123"
+        }))
+        .send()
+        .await
+        .expect("register request failed");
+
+    assert_eq!(register_response.status().as_u16(), 200);
+
+    let register_body = register_response
+        .json::<serde_json::Value>()
+        .await
+        .expect("failed to parse register response");
+
+    assert_eq!(register_body["user"]["username"], allowed_username);
+}

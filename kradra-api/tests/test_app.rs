@@ -48,6 +48,20 @@ async fn reset_db(pool: &PgPool) {
         .execute(pool)
         .await
         .expect("failed to delete users");
+
+    sqlx::query(
+        r#"
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ('registration_enabled', 'true', now())
+        ON CONFLICT (key)
+        DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = now()
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("failed to reset app_settings");
 }
 
 pub async fn spawn_app() -> TestApp {
