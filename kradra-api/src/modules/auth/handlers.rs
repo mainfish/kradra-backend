@@ -3,10 +3,11 @@ use axum::{
     extract::{Extension, State},
     http::{HeaderMap, Method},
 };
-use std::{env, sync};
+use std::sync;
 
 use cookies::{csrf, refresh};
 use kradra_core::auth::errors::AuthError;
+use kradra_core::auth::ports::AppSettingsStore;
 use kradra_core::auth::usecases;
 
 use super::dto::{
@@ -18,13 +19,6 @@ use crate::infra::security::lockout::LockoutService;
 use crate::infra::telemetry::audit;
 use crate::{error::AppError, http::cookies, state::AppState};
 
-fn registration_disabled() -> bool {
-    env::var("DISABLE_REGISTRATION")
-        .ok()
-        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-        .unwrap_or(false)
-}
-
 pub async fn register(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -33,9 +27,15 @@ pub async fn register(
     let meta = audit::RequestMeta::from_headers(Method::POST, "/api/auth/register", &headers);
     let username = req.username.trim().to_string();
 
-    if registration_disabled() {
-        audit::auth_register_fail(&meta, &username, "registration_disabled");
+    let registration_enabled = state
+        .db_adapters
+        .app_settings_store
+        .get_registration_enabled()
+        .await
+        .map_err(AppError::from)?;
 
+    if !registration_enabled {
+        audit::auth_register_fail(&meta, &username, "registration_disabled");
         return Err(AppError::ServiceUnavailable(
             "registration temporarily disabled".to_string(),
         ));

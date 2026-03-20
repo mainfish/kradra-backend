@@ -54,3 +54,8 @@ pub trait RefreshTokenStore: Send + Sync {
     async fn revoke_all_active_for_user(&self, user_id: &str) -> Result<(), AuthError>;
     async fn list_sessions_for_user(&self, user_id: &str) -> Result<Vec<UserSession>, AuthError>;
 }
+
+pub trait AppSettingsStore: Send + Sync {
+    async fn get_registration_enabled(&self) -> Result<bool, AuthError>;
+    async fn set_registration_enabled(&self, enabled: bool) -> Result<(), AuthError>;
+}

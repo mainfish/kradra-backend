@@ -4,6 +4,7 @@ use std::env;
 
 use crate::infra::crypto::passwords::Argon2Hasher;
 use crate::infra::crypto::tokens::{JwtAccessTokenService, JwtRefreshTokenService};
+use crate::infra::db::app_settings_store::PgAppSettingsStore;
 use crate::infra::db::refresh_token_store::PgRefreshTokenStore;
 use crate::infra::db::user_repo::PgUserRepo;
 
@@ -37,17 +38,20 @@ pub struct DbAdapters {
     pub db: PgPool,
     pub user_repo: PgUserRepo,
     pub refresh_token_store: PgRefreshTokenStore,
+    pub app_settings_store: PgAppSettingsStore,
 }
 
 impl DbAdapters {
     pub fn new(db: PgPool) -> Self {
         let user_repo = PgUserRepo::new(db.clone());
         let refresh_token_store = PgRefreshTokenStore::new(db.clone());
+        let app_settings_store = PgAppSettingsStore::new(db.clone());
 
         Self {
             db,
             user_repo,
             refresh_token_store,
+            app_settings_store,
         }
     }
 }
